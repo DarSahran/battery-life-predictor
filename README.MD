@@ -116,13 +116,3 @@ pip install -r requirements.txt
 ```
 
 ---
-
-## 🧠 Author
-**Dar Sahran**  
-AI + IoT Innovator | Data Science | Robotics
-
----
-
-## 📄 License
-MIT License
-

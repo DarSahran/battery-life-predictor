@@ -1,31 +1,39 @@
-# 🔋 Battery Life Predictor
+# 🔋 Battery Life Predictor (LSTM-based)
 
-A real-time, deep learning-based simulation and prediction tool for estimating battery discharge life. It uses LSTM neural networks trained on per-minute discharge data and integrates a Streamlit-based web interface for live simulations.
+A real-time battery life predictor using an LSTM model trained on minute-by-minute battery discharge data. It includes Streamlit UI, simulation, and deployment-ready structure.
 
 ---
 
-## 📂 Project Structure
+## 📁 Project Structure
 
 ```
 BATTEY_GAUGE/
+│
 ├── data/
-│   ├── excel/                      # Raw test data in Excel format
-│   │   ├── battery_info.xlsx
-│   │   └── Temp_Rev_Tubular26_Tests.xlsx
-│   ├── Merged/
-│   │   └── battery_training_data.csv
-│   └── processed/                 # Cleaned CSVs per battery test (TEST_1_processed.csv ... TEST_17_processed.csv)
-├── models/                        # Trained model and scalers
+│   ├── excel/                     # Original Excel sheets
+│   ├── Merged/                    # Merged dataset (optional)
+│   └── processed/                 # Cleaned per-test CSVs
+│
+├── models/                       # Trained LSTM model and scalers
 │   ├── battery_lstm_model.keras
 │   ├── input_scaler.pkl
 │   └── target_scaler.pkl
-├── scripts/                       # Model training and prediction scripts
-│   ├── train_lstm_model.py
-│   ├── predict_battery_time.py
-│   └── process_battery_sheets.py
-├── webpage/                       # Streamlit app
+│
+├── scripts/                      # Core training + utility scripts
+│   ├── train_lstm_model.py       # Trains the LSTM model
+│   ├── predict_battery_time.py   # Real-time simulation
+│   └── process_battery_sheets.py # Excel → processed CSV
+│
+├── webpage/                      # Streamlit frontend
 │   └── battery_life_gui.py
-├── requirements.txt
+│
+├── images/                       # UI Screenshots
+│   ├── Battery_type.png
+│   ├── Dashboard.png
+│   ├── detail.png
+│   └── Graph.png
+│
+├── requirements.txt             # Python dependencies
 └── .gitignore
 ```
 
@@ -33,69 +41,91 @@ BATTEY_GAUGE/
 
 ## 🚀 Features
 
-- **LSTM-Based Deep Learning Model** trained on realistic battery usage data.
-- **Per-test Metadata Integration** (Capacity, Battery Type, Charge Level).
-- **Exponential Smoothing** applied to Current, Voltage, and derived signals.
-- **Real-time Simulation** using Streamlit with visual prediction updates.
-- **Battery Type Selector** (b1, b2, b3, b5, tn1).
-- **Live Plotting** of Remaining Hours in GUI.
+- ⚙️ LSTM-based time-series predictor for battery discharge percentage
+- 📊 Real-time simulation of current, voltage & remaining capacity
+- 🧠 Battery metadata handling (type, capacity, charge level)
+- 📈 Streamlit-based live dashboard (graph + stats)
+- 🧪 Per-test processing to improve realism (no unrealistic jumps)
+- 🔁 Live prediction every 30 seconds with realistic variation
 
 ---
 
-## ⚙️ Setup Instructions
+## 📸 UI Snapshots
 
-1. **Clone the Repo**
-   ```bash
-   git clone https://github.com/DarSahran/battery-life-predictor.git
-   cd battery-life-predictor
-   ```
+### 📊 Streamlit Dashboard
+![Dashboard](images/Dashboard.png)
 
-2. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 🔋 Battery Type Selection
+![Battery Type](images/Battery_type.png)
 
-3. **Train the Model**
-   ```bash
-   python scripts/train_lstm_model.py
-   ```
+### 📈 Discharge Graph
+![Graph](images/Graph.png)
 
-4. **Run the Streamlit App**
-   ```bash
-   streamlit run webpage/battery_life_gui.py
-   ```
+### 🔍 Detail View
+![Detail](images/detail.png)
 
 ---
 
-## 📊 Model Details
+## 🧪 Dataset Overview
+- **Sources**: Individual CSVs from minute-wise battery discharge testing
+- **Metadata**: battery type, total capacity, charged level
+- **Range**: Voltage drops from ~13V to ~9.3V before death
 
-- **Input Features**: `Current`, `Voltage`, `Ah Out`, `Cumulative Discharge`, `Power`, `Remaining Capacity`, `Battery Type`, `Charged Upto`, `Capacity`
-- **Target**: `Discharge %`
-- **Time Series Window**: 30 minutes
-- **Model Type**: LSTM (128 + 64 units) + Dense layers
-- **Output**: Estimated Remaining Time (discharge % ➔ time in HH:MM:SS)
-
----
-
-## 💡 Battery Types & Metadata
-
-| Battery Type | Capacity (Ah) | Charged Upto (Ah) |
-|--------------|----------------|-------------------|
-| B1           | 81.28          | 81.28             |
-| B2           | 85 - 88.81     | 85 - 88.81        |
-| B3           | 88.35          | 61 - 88.35        |
-| B5           | 85             | 67 - 85           |
-| TN1          | 85             | 54 - 80           |
+### Example:
+```
+test1 → b5, 85Ah, full charge
+343 rows → battery lasted 343 minutes
+```
 
 ---
 
-## 💮 License
-
-This project is licensed under the MIT License.
+## 🧠 Model Details
+- Type: LSTM (2-layer)
+- Input: last 30 minutes of features
+- Output: Discharge % (scaled + smoothed)
+- Features:
+  - Current
+  - Voltage
+  - Ah Out
+  - Cumulative Discharge Ah
+  - Power
+  - Remaining Capacity
+  - Battery Capacity
+  - Charged Upto
+  - Battery Type (One-hot)
 
 ---
 
-## 👤 Author
+## 🛠️ To Train the Model
+```bash
+cd scripts
+python train_lstm_model.py
+```
 
+---
+
+## 💡 To Run Streamlit Dashboard
+```bash
+cd webpage
+streamlit run battery_life_gui.py
+```
+
+---
+
+## 📦 Requirements
+Install Python dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 🧠 Author
 **Dar Sahran**  
-GitHub: [@DarSahran](https://github.com/DarSahran)
+AI + IoT Innovator | Data Science | Robotics
+
+---
+
+## 📄 License
+MIT License
+

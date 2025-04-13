@@ -61,9 +61,6 @@ BATTEY_GAUGE/
 ### 📈 Discharge Graph
 ![Graph](images/Graph.png)
 
-### 🔍 Detail View
-![Detail](images/Detail.png)
-
 ---
 
 ## 🧪 Dataset Overview

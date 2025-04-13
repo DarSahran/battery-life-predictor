@@ -62,7 +62,7 @@ BATTEY_GAUGE/
 ![Graph](images/Graph.png)
 
 ### 🔍 Detail View
-![Detail](images/detail.png)
+![Detail](images/Detail.png)
 
 ---
 

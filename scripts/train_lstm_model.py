@@ -66,7 +66,14 @@ def load_data(data_dir):
             continue
 
         df = df.reset_index(drop=True)
-        df['Discharge %'] = 100 * (1 - df.index / df.shape[0])
+
+        # --- Realistic DoD + Remaining Voltage --- #
+        df['Cumulative_Ah'] = df['Ah Out'].cumsum()
+        df['Discharge %'] = 100 * df['Cumulative_Ah'] / meta['charged']
+        df['Remaining Capacity'] = 100 - df['Discharge %']
+        df['Remaining Voltage'] = df['Voltage'].max() - df['Voltage']
+        df['Power'] = df['Voltage'] * df['Current']
+
         df['Capacity'] = meta['capacity']
         df['Charged_Upto'] = meta['charged']
         df['Battery_Type'] = meta['type']
@@ -92,12 +99,11 @@ def preprocess(df, battery_types, features, target, time_steps=30):
     feature_names = ohe.get_feature_names_out(['Battery_Type'])
 
     df_encoded = pd.concat([
-    df.reset_index(drop=True),
-    pd.DataFrame(battery_type_encoded, columns=feature_names)
+        df.reset_index(drop=True),
+        pd.DataFrame(battery_type_encoded, columns=feature_names)
     ], axis=1)
 
     extended_features = features + ['Capacity', 'Charged_Upto'] + list(feature_names)
-
 
     scaler_x = MinMaxScaler()
     X_scaled = scaler_x.fit_transform(df_encoded[extended_features])
@@ -147,7 +153,7 @@ def main():
     print("[INFO] Loading data...")
     df, types = load_data(DATA_DIR)
 
-    features = ['Current', 'Voltage', 'Ah Out', 'Cumulative Actual Disch Ah', 'Power', 'Remaining Capacity']
+    features = ['Current', 'Voltage', 'Ah Out', 'Power', 'Remaining Capacity', 'Remaining Voltage']
     target = 'Discharge %'
 
     print("[INFO] Preprocessing...")

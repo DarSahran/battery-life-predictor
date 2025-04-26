@@ -1,0 +1,4 @@
+1) make sure model is working proper as we are using lstm with exponential smoothing
+2) create a matplotlib graph to show loses
+3) we have to create a model that will show how reliable it it 
+near actual dod more better the model is

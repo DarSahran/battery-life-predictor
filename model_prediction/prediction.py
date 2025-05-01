@@ -9,7 +9,7 @@ import sklearn
 
 
 # ------------------ CONFIG ------------------ #
-MODEL_PATH = "../models/battery_lstm_model.keras"
+MODEL_PATH = "../models/battery_lstm_model.keras" 
 SCALER_X_PATH = "../models/input_scaler.pkl"
 SCALER_Y_PATH = "../models/target_scaler.pkl"
 FEATURES = ['Current', 'Voltage', 'Ah Out', 'Cumulative Actual Disch Ah', 'Power', 'Remaining Capacity']

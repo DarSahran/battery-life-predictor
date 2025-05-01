@@ -5,22 +5,40 @@ import joblib
 import time
 from datetime import datetime, timedelta
 import xgboost as xgb
-import sklearn
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 
 
 # ------------------ CONFIG ------------------ #
-MODEL_PATH = "../models/battery_lstm_model.keras"
-SCALER_X_PATH = "../models/input_scaler.pkl"
-SCALER_Y_PATH = "../models/target_scaler.pkl"
-FEATURES = ['Current', 'Voltage', 'Ah Out', 'Cumulative Actual Disch Ah', 'Power', 'Remaining Capacity']
-EXTRA_FEATURES = ['Capacity', 'Charged_Upto'] + [f"Battery_Type_{t}" for t in ['b1', 'b2', 'b3', 'tn1', 'b5']]
+MODEL_PATH = "../models/battery_xgboost_model.json"
+FEATURES = ['Current', 'Voltage', 'Ah Out', 'Cumulative Actual Disch Ah', 'Power', 'Remaining Capacity', 'type', 'capacity','charged']
+EXTRA_FEATURES = ['Battery_Type_b1', 'Battery_Type_b2', 'Battery_Type_b3', 'Battery_Type_tn1', 'Battery_Type_b5']
 ALL_FEATURES = FEATURES + EXTRA_FEATURES
 TIME_STEPS = 10
 
 # ------------------ Load model and scalers ------------------ #
+model = xgb.XGBRegressor()
 model = load_model(MODEL_PATH)
-scaler_x = joblib.load(SCALER_X_PATH)
-scaler_y = joblib.load(SCALER_Y_PATH)
+
+numerical_transformer = Pipeline(steps=[
+    ('pass',
+     'passthrough')
+])
+categorical_transformer = Pipeline(steps=[
+    ('onehot',
+     OneHotEncoder(handle_unknown='ignore',
+                   sparse_output=False))
+])
+
+numerical_features = ['Current', 'Voltage', 'Ah Out', 'Cumulative Actual Disch Ah', 'Power', 'Remaining Capacity', 'capacity', 'charged']
+categorical_features = ['type']
+
+preprocessor = ColumnTransformer(transformers=[
+    ('num', numerical_transformer, numerical_features),
+    ('cat', categorical_transformer, categorical_features)
+]
+    ,remainder='passthrough')
 
 # ------------------ Streamlit UI ------------------ #
 st.set_page_config(layout="wide")
@@ -92,14 +110,10 @@ if st.button("Start Simulation"):
         buffer.append(base_row)
 
         if len(buffer) >= TIME_STEPS:
-            df = pd.DataFrame(buffer)
-            df = df.rolling(window=3, min_periods=1).mean()
-            df = df[scaler_x.feature_names_in_]  # Column order
-            X_scaled = scaler_x.transform(df)
-            X_input = np.expand_dims(X_scaled[-TIME_STEPS:], axis=0)
+            df = pd.DataFrame(buffer[-1])
+            X_input = preprocessor.transform(df)
 
-            y_pred_scaled = model.predict(X_input, verbose=0)
-            y_pred = scaler_y.inverse_transform(y_pred_scaled)
+            y_pred = model.predict(X_input, verbose=0)
             discharge_percent = np.clip(y_pred[0][0], 0, 100)
             time_remaining = (discharge_percent / 100) * (battery_capacity * 3600 / base_current)
 

@@ -3,24 +3,17 @@ import numpy as np
 import pandas as pd
 import joblib
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 import xgboost as xgb
-import sklearn
 
 
 # ------------------ CONFIG ------------------ #
-MODEL_PATH = "../models/battery_lstm_model.keras" 
-SCALER_X_PATH = "../models/input_scaler.pkl"
-SCALER_Y_PATH = "../models/target_scaler.pkl"
-FEATURES = ['Current', 'Voltage', 'Ah Out', 'Cumulative Actual Disch Ah', 'Power', 'Remaining Capacity']
-EXTRA_FEATURES = ['Capacity', 'Charged_Upto'] + [f"Battery_Type_{t}" for t in ['b1', 'b2', 'b3', 'tn1', 'b5']]
-ALL_FEATURES = FEATURES + EXTRA_FEATURES
+MODEL_PATH = "../models/battery_xgboost_model.json"
 TIME_STEPS = 10
 
 # ------------------ Load model and scalers ------------------ #
-model = load_model(MODEL_PATH)
-scaler_x = joblib.load(SCALER_X_PATH)
-scaler_y = joblib.load(SCALER_Y_PATH)
+model = xgb.XGBRegressor()
+model.load_model(MODEL_PATH)
 
 # ------------------ Streamlit UI ------------------ #
 st.set_page_config(layout="wide")
@@ -35,7 +28,7 @@ battery_type = st.selectbox("Select Battery Type:", [
 ])
 
 battery_capacity = float(battery_type.split("-")[1].strip().split()[0])
-battery_code = battery_type.split("-")[0].strip().lower()
+battery_code = battery_type.split("-")[0].strip()
 
 if st.button("Start Simulation"):
     st.subheader(f"Live Battery Predictions for {battery_type}")
@@ -46,8 +39,23 @@ if st.button("Start Simulation"):
     predictions = []
     timestamps = []
     buffer = []
+    start_time = datetime.now()
+    battery_type = {
+        "B1": 81.28,
+        "B2": 85,
+        "B3": 88.35,
+        "TN1": 85,
+        "B5": 85
+    }
+    battery_order = {
+        "B1": 8,
+        "B2": 9,
+        "B3": 10,
+        "TN1": 12,
+        "B5": 11
+    }
 
-    battery_type_map = {"b1": 0, "b2": 1, "b3": 2, "tn1": 3, "b5": 4}
+    battery_type_map = {"B1": 0, "B2": 1, "B3": 2, "TN1": 3, "B5": 4}
 
     # KPIs setup (using empty containers for dynamic updates)
     col1, col2, col3, col4 = st.columns(4)
@@ -60,6 +68,7 @@ if st.button("Start Simulation"):
     start_time = datetime.now()
 
     while True:
+        battery_order_code = battery_order[battery_code]
         t = (datetime.now() - start_time).seconds
 
         current = base_current + 3 * np.sin(t / 10) + np.random.normal(0, 1)
@@ -75,31 +84,28 @@ if st.button("Start Simulation"):
         power = current * voltage
         remaining = max(battery_capacity - cumulative_ah, 0)
 
-        base_row = {
-            'Current': current,
-            'Voltage': voltage,
-            'Ah Out': ah_out,
-            'Cumulative Actual Disch Ah': cumulative_ah,
-            'Power': power,
-            'Remaining Capacity': remaining,
-            'Capacity': battery_capacity,
-            'Charged_Upto': battery_capacity,
-        }
-
-        for bt in battery_type_map:
-            base_row[f"Battery_Type_{bt}"] = 1 if battery_code == bt else 0
+        base_row = [
+            float(current),
+            float(voltage),
+            float(ah_out),
+            float(cumulative_ah),
+            float(power),
+            float(remaining),
+            float(battery_capacity),
+            float(battery_capacity),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+        ]
+        base_row[battery_order_code] = 1.0
 
         buffer.append(base_row)
 
         if len(buffer) >= TIME_STEPS:
-            df = pd.DataFrame(buffer)
-            df = df.rolling(window=3, min_periods=1).mean()
-            df = df[scaler_x.feature_names_in_]  # Column order
-            X_scaled = scaler_x.transform(df)
-            X_input = np.expand_dims(X_scaled[-TIME_STEPS:], axis=0)
-
-            y_pred_scaled = model.predict(X_input, verbose=0)
-            y_pred = scaler_y.inverse_transform(y_pred_scaled)
+            X_input = np.array(buffer, dtype=np.float32)
+            y_pred = model.predict(X_input)
             discharge_percent = np.clip(y_pred[0][0], 0, 100)
             time_remaining = (discharge_percent / 100) * (battery_capacity * 3600 / base_current)
 

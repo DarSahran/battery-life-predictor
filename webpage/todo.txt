@@ -3,3 +3,9 @@
 3) we have to create a model that will show how reliable it it
 4) Try XGBoost Algorithm once to check accuracy
 near actual dod more better the model is
+
+Changes Done as of May 2, 2025, 00:21
+- Predictions.py has been adjusted for xgboost predictions
+- preprocessor jupyter notebook is of no use to streamlit, don't delete it though
+- xgboost model was adjusted for different battery types
+- xgboost model can be made more accurate according to the results we would be getting

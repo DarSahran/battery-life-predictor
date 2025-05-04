@@ -15,3 +15,4 @@ Changes Done as of May 4, 2025,
 -we created and compared models (lstm much closer to actual scenario but due to sinosuidoal function acts like that{can be fixed})
 -prediction.py file need to be re trained as all battery shows same remaining time as above 5hr even after adding custom charged battery up 
 -check all hyper parameters and try to train again 
+-main: we need to get the DOD graph wrt to actual dod

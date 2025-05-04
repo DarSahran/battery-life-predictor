@@ -3,14 +3,14 @@ import numpy as np
 import pandas as pd
 import joblib
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from tensorflow.keras.models import load_model
 
 # ------------------ CONFIG ------------------ #
 MODEL_PATH = "../models/battery_lstm_model.keras"
 SCALER_X_PATH = "../models/input_scaler.pkl"
 SCALER_Y_PATH = "../models/target_scaler.pkl"
-FEATURES = ['Current', 'Voltage', 'Ah Out', 'Cumulative Actual Disch Ah', 'Power', 'Remaining Capacity']
+FEATURES = ['Current', 'Voltage', 'Ah Out', 'Cumulative Actual Disch Ah', 'Power', 'Remaining Capacity', 'Remaining Voltage']
 EXTRA_FEATURES = ['Capacity', 'Charged_Upto'] + [f"Battery_Type_{t}" for t in ['b1', 'b2', 'b3', 'tn1', 'b5']]
 ALL_FEATURES = FEATURES + EXTRA_FEATURES
 TIME_STEPS = 10
@@ -35,19 +35,27 @@ battery_type = st.selectbox("Select Battery Type:", [
 battery_capacity = float(battery_type.split("-")[1].strip().split()[0])
 battery_code = battery_type.split("-")[0].strip().lower()
 
+# Input for current charged Ah
+charged_ah = st.number_input(
+    "Enter Current Charged Value (in Ah):",
+    min_value=0.0,
+    max_value=battery_capacity,
+    value=battery_capacity,
+    step=0.1
+)
+
 if st.button("Start Simulation"):
     st.subheader(f"Live Battery Predictions for {battery_type}")
 
     base_current = 15
     base_voltage = 12.4
-    cumulative_ah = 0
+    cumulative_ah = charged_ah
     predictions = []
     timestamps = []
     buffer = []
 
     battery_type_map = {"b1": 0, "b2": 1, "b3": 2, "tn1": 3, "b5": 4}
 
-    # KPIs setup (using empty containers for dynamic updates)
     col1, col2, col3, col4 = st.columns(4)
     current_kpi = col1.empty()
     voltage_kpi = col2.empty()
@@ -80,8 +88,9 @@ if st.button("Start Simulation"):
             'Cumulative Actual Disch Ah': cumulative_ah,
             'Power': power,
             'Remaining Capacity': remaining,
+            'Remaining Voltage': base_voltage - voltage,  # ✅ Fixed line
             'Capacity': battery_capacity,
-            'Charged_Upto': battery_capacity,
+            'Charged_Upto': charged_ah,
         }
 
         for bt in battery_type_map:
@@ -92,7 +101,7 @@ if st.button("Start Simulation"):
         if len(buffer) >= TIME_STEPS:
             df = pd.DataFrame(buffer)
             df = df.rolling(window=3, min_periods=1).mean()
-            df = df[scaler_x.feature_names_in_]  # Column order
+            df = df[scaler_x.feature_names_in_]  # Use training-time column order
             X_scaled = scaler_x.transform(df)
             X_input = np.expand_dims(X_scaled[-TIME_STEPS:], axis=0)
 

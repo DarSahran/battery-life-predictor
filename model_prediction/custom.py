@@ -93,7 +93,7 @@ if st.button("Start Simulation"):
             float(power),
             float(remaining),
             float(battery_capacity),
-            float(battery_capacity),
+            float(charged_ah),
             0.0,
             0.0,
             0.0,

@@ -6,7 +6,6 @@ import time
 from datetime import datetime
 import xgboost as xgb
 
-
 # ------------------ CONFIG ------------------ #
 MODEL_PATH = "../models/battery_xgboost_model.json"
 TIME_STEPS = 10
@@ -30,23 +29,25 @@ battery_type = st.selectbox("Select Battery Type:", [
 battery_capacity = float(battery_type.split("-")[1].strip().split()[0])
 battery_code = battery_type.split("-")[0].strip()
 
+charged_ah = st.number_input(
+    "Enter Current Charged Value (in Ah):", 
+    min_value=0.0, 
+    max_value=battery_capacity, 
+    value=battery_capacity, 
+    step=0.1
+)
+
 if st.button("Start Simulation"):
     st.subheader(f"Live Battery Predictions for {battery_type}")
 
     base_current = 15
     base_voltage = 12.4
-    cumulative_ah = 0
+    cumulative_ah = charged_ah  # initialize from user input
     predictions = []
     timestamps = []
     buffer = []
     start_time = datetime.now()
-    battery_type = {
-        "B1": 81.28,
-        "B2": 85,
-        "B3": 88.35,
-        "TN1": 85,
-        "B5": 85
-    }
+
     battery_order = {
         "B1": 8,
         "B2": 9,

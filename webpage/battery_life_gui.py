@@ -128,3 +128,4 @@ if st.button("Start Simulation"):
         time.sleep(1)
 
     st.success("✅ Battery voltage dropped below threshold. Simulation completed.")
+    #this is new

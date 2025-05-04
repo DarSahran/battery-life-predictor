@@ -9,3 +9,9 @@ Changes Done as of May 2, 2025, 00:21
 - preprocessor jupyter notebook is of no use to streamlit, don't delete it though
 - xgboost model was adjusted for different battery types
 - xgboost model can be made more accurate according to the results we would be getting
+
+
+Changes Done as of May 4, 2025,
+-we created and compared models (lstm much closer to actual scenario but due to sinosuidoal function acts like that{can be fixed})
+-prediction.py file need to be re trained as all battery shows same remaining time as above 5hr even after adding custom charged battery up 
+-check all hyper parameters and try to train again 

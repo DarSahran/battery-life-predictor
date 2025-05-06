@@ -4,8 +4,8 @@ from datetime import datetime
 import joblib
 import matplotlib.pyplot as plt
 
-MODEL1_PATH = "/Users/anshumaansoni/PycharmProjects/battery-life-predictor/models/battery_random_forest_model.joblib"
-MODEL2_PATH = "/Users/anshumaansoni/PycharmProjects/battery-life-predictor/models/battery_random_forest_model2.joblib"
+MODEL1_PATH = "../models/battery_random_forest_model.joblib"
+MODEL2_PATH = "../models/battery_random_forest_model2.joblib"
 TIME_STEPS = 10
 
 # --- Simulation Parameters ---
@@ -90,7 +90,8 @@ def simulate_battery_values_revised(
     )
 
 # --- Main Simulation Loop ---
-battery_type_index = 2
+battery_type_index = int(input("Enter battery type index (0-B1,1-B2,2-B3,3-TN1,4-B5): "))
+
 TIME_STEP = 0
 cumulative_ah_total = 0.0
 
@@ -106,7 +107,13 @@ current_battery_code = battery_keys_list[battery_type_index]
 capacity = float(battery_type_capacities[current_battery_code])
 
 
-charged_ah = 40.0
+charged_ah = int(input("Enter charged Ah value (0-100): "))
+if charged_ah < 0 or charged_ah > 100:
+    print("Warning: charged Ah value out of bounds. Defaulting to 0.")
+    charged_ah = 0
+if charged_ah > 100:
+    charged_ah = 100
+
 
 print(f"Starting simulation for: {current_battery_code} (Nominal Capacity: {capacity} Ah)")
 simulation_start_time = datetime.now()
@@ -188,18 +195,21 @@ for i in range(600):
     if TIME_STEP % 50 == 0:
         print(f"Progress: Step {TIME_STEP}, V={voltage:.2f}, SoC={remaining_perc:.1f}%")
 
+        # --- Plotting Results ---
+        if prediction_values:
+            plt.figure(figsize=(10, 6))
+            # Ensure proper stepping for x-axis labels (1, 2, 3, ...)
+            plt.plot(range(1, len(prediction_values) + 1), np.array(prediction_values) / 3600.0, marker='.', linestyle='-')
+            for i, (step, remaining_time) in enumerate(zip(range(1, len(prediction_values) + 1), prediction_values)):
+                remaining_hours = remaining_time / 3600.0
+                plt.text(step, remaining_hours, f"{remaining_hours:.1f}h", fontsize=8, ha='center', va='bottom')
+            plt.xlabel(f"Simulation Step (1, 2, 3, ...)")
+            plt.ylabel("Predicted Remaining Useful Life (Hours)")
+            plt.title(f"Battery Life Prediction for {current_battery_code} (Charged Ah: {charged_ah})")
+            plt.grid(True)
+            plt.tight_layout()
+            plt.show()
+        else:
+            print("No predictions were generated to plot. Simulation may have ended early or buffer not filled.")
 
-# --- Plotting Results ---
-if prediction_values:
-    plt.figure(figsize=(10,6))
-    plt.plot(prediction_timestamps, np.array(prediction_values) / 3600.0, marker='.', linestyle='-')
-    plt.xlabel(f"Simulation Time Step (Interval: {SIM_INTERVAL_MINUTES} min)")
-    plt.ylabel("Predicted Remaining Useful Life (Hours)")
-    plt.title(f"Battery Life Prediction for {current_battery_code}")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-else:
-    print("No predictions were generated to plot. Simulation may have ended early or buffer not filled.")
-
-print(f"\nSimulation for {current_battery_code} finished at step {TIME_STEP}.")
+        print(f"\nSimulation for {current_battery_code} finished at step {TIME_STEP}.")

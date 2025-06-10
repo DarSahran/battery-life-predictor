@@ -24,7 +24,7 @@ BATTERY_METADATA = {
     "TEST_17_processed": {"capacity": 88.35, "charged": 88.35, "type": "b3"},
 }
 
-MODEL1_PATH = "../models/battery_random_forest_model.joblib"
+MODEL1_PATH = "../models/battery_random_forest_model1.joblib"
 MODEL2_PATH = "../models/battery_random_forest_model2.joblib"
 TIME_STEPS = 10
 

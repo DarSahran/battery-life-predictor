@@ -20,6 +20,7 @@ class preprocessing():
         if self.dataset1.empty:
             print("Halting workflow as initial dataset is empty.")
             return
+        # "chan"
 
         trainer = training()
         

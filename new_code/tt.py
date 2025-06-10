@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from datetime import datetime
 import joblib
 import matplotlib.pyplot as plt
 
@@ -142,26 +143,28 @@ def main():
             break
 
         data_buffer.append({
-            'Current': current,
-            'Voltage': voltage,
-            'Ah Out': ah_out,
-            'Cumulative Actual Disch Ah': cumulative_ah_total,
-            'Power': power,
-            'Remaining Capacity': remaining_perc,
-            'type': selected_type,
-            'capacity': capacity,
-            'charged': charged_ah
+            'Current': float(current),
+            'Voltage': float(voltage),
+            'Ah Out': float(ah_out),
+            'Cumulative Actual Disch Ah': float(cumulative_ah_total),
+            'Power': float(power),
+            'Remaining Capacity': float(remaining_perc),
+            'type': type_choice,
+            'capacity': float(capacity),
+            'charged': float(charged_ah)
         })
 
         if len(data_buffer) >= TIME_STEPS:
-            X_input_df = pd.DataFrame(data_buffer[-TIME_STEPS:])
+            X_input_df = pd.DataFrame(data_buffer)
             try:
                 pred_model1 = model1.predict(X_input_df)
                 X_input_df_for_model2 = X_input_df.copy()
-                if isinstance(pred_model1, np.ndarray):
+
+                if isinstance(pred_model1, np.ndarray) and len(pred_model1) > 0:
                     X_input_df_for_model2['prediction'] = pred_model1[-1]
                 else:
                     X_input_df_for_model2['prediction'] = pred_model1
+
                 y_pred_model2 = model2.predict(X_input_df_for_model2)
                 time_remaining_seconds = y_pred_model2[-1]
 

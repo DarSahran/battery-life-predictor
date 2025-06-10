@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-from keras.src.ops import dtype
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import OneHotEncoder
@@ -139,8 +138,6 @@ class preprocessing():
 
 
 class training():
-    def __init__(self):
-
     def RandomForest1(self):
         TARGET_VARIABLE = 'Time to Depletion'
         data = pd.read_csv("../new_code/DATASET.csv")
@@ -309,4 +306,5 @@ class training():
 
         parameters = grid_search.best_params_
         print("Best Parameters:", parameters)
-
+if __name__ == "__main__":
+    preprocessing()

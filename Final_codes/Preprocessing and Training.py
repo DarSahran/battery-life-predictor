@@ -25,20 +25,11 @@ class preprocessing():
         
         self.model1_path = "../models/battery_random_forest_model1.joblib"
         print(f"\nTraining RandomForest1 and saving to {self.model1_path}...")
-        self.model1 = trainer.RandomForest1(self.dataset1.copy(), self.model1_path) # Use .copy() if dataset1 is reused elsewhere unmodified
+        self.model1 = trainer.RandomForest1(self.dataset1.copy(), self.model1_path)
 
-        # Path for the model to be used in _preprocessing2 for initial predictions
-        # This was "../models/battery_random_forest_model.joblib" in the original code.
-        # If you intend to use the model just trained (model1), pass self.model1 directly
-        # or load it using self.model1_path.
-        # For this refactoring, I'm keeping it as a distinct path as in the original.
         initial_prediction_model_path = "../models/battery_random_forest_model.joblib"
         print(f"\nRunning preprocessing step 2 using model from {initial_prediction_model_path}...")
-        if self.model1 is not None: # Proceed only if first model training was successful
-            # If initial_prediction_model_path refers to the model trained by RandomForest1,
-            # you should use self.model1 or self.model1_path here.
-            # Example: self.dataset2 = self._preprocessing2(self.dataset1.copy(), model_to_use=self.model1)
-            # Or: self.dataset2 = self._preprocessing2(self.dataset1.copy(), model_path_to_load=self.model1_path)
+        if self.model1 is not None:
             self.dataset2 = self._preprocessing2(self.dataset1.copy(), model_path_to_load=initial_prediction_model_path)
         else:
             print("Skipping preprocessing step 2 and RandomForest2 due to failure in RandomForest1.")
@@ -53,7 +44,6 @@ class preprocessing():
             print("Skipping RandomForest2 as dataset2 is not available.")
             self.model2 = None
 
-        # Optionally save the final DataFrames
         if not self.dataset1.empty:
             self.save_dataframe(self.dataset1, "../new_code/DATASET_optimized.csv")
         if self.dataset2 is not None and not self.dataset2.empty:
@@ -149,7 +139,6 @@ class preprocessing():
             data_df['prediction'] = np.nan
             return data_df
 
-        # Plotting (optional, consider moving to a separate utility function)
         try:
             plt.figure(figsize=(12, 8))
             plt.subplot(2, 2, 1)
@@ -176,13 +165,11 @@ class preprocessing():
 
         def predictor_thread_func(pred_map, model_obj, data_chunk, chunk_offset):
             try:
-                # The model pipeline should handle feature selection and preprocessing
                 chunk_predictions = model_obj.predict(data_chunk)
                 for i, prediction_val in enumerate(chunk_predictions):
-                    pred_map[data_chunk.index[i]] = prediction_val # Use original DataFrame index
+                    pred_map[data_chunk.index[i]] = prediction_val
             except Exception as e:
                 print(f"Error during batch prediction in thread: {e}. Rows {chunk_offset} to {chunk_offset + len(data_chunk)-1} may not be predicted.")
-                # Fallback or mark as NaN for this chunk
                 for i in range(len(data_chunk)):
                      pred_map[data_chunk.index[i]] = np.nan
 
@@ -214,11 +201,9 @@ class preprocessing():
 
         prediction_series = pd.Series(predictions_map, name='prediction').reindex(data_df.index)
         data_df['prediction'] = prediction_series
-        
-        # Fill any NaNs that might result from threading errors or if some chunks failed
+
         if data_df['prediction'].isnull().any():
             print(f"Warning: {data_df['prediction'].isnull().sum()} predictions are NaN. Check for errors in predictor threads.")
-            # data_df['prediction'].fillna(defaultValue, inplace=True) # Optional: fill with a default
 
         print(f"Preprocessing 2 finished. Shape of data with predictions: {data_df.shape}")
         return data_df
@@ -236,7 +221,6 @@ class training():
         print(f"Numerical Features: {numerical_features}")
         print(f"Categorical Features: {categorical_features}")
 
-        # Basic NaN check (consider more sophisticated handling)
         if X.isnull().sum().sum() > 0:
             print(f"Warning: NaNs found in features for {model_name}. Imputers in pipeline will handle them.")
         if Y.isnull().any():
@@ -250,14 +234,14 @@ class training():
             ('scaler', StandardScaler()) 
         ])
         categorical_transformer = Pipeline(steps=[
-            ('imputer', SimpleImputer(strategy='most_frequent')), # Handles NaNs in categoricals
+            ('imputer', SimpleImputer(strategy='most_frequent')),
             ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
         ])
         
         preprocessor = ColumnTransformer(transformers=[
             ('num', numerical_transformer, numerical_features),
             ('cat', categorical_transformer, categorical_features)
-        ], remainder='passthrough') # 'passthrough' columns not specified, or 'drop'
+        ], remainder='passthrough')
         
         rf_model = RandomForestRegressor(
             random_state=42,
@@ -275,9 +259,9 @@ class training():
             estimator=pipeline,
             param_grid=param_grid,
             scoring='neg_mean_absolute_error',
-            cv=2, # Using CV=2 for speed; consider 3-5 for better results
+            cv=2,
             verbose=1,
-            n_jobs=-1, # Use all available cores
+            n_jobs=-1,
             return_train_score=True,
             refit=True
         )
@@ -302,10 +286,6 @@ class training():
         except Exception as e:
             print(f"Error during GridSearchCV for {model_name}: {e}")
             print("Check for issues like all-NaN columns after splits, or incompatible data types for transformers.")
-            # print("X_train sample for debugging:")
-            # print(X_train.head().to_string())
-            # print("\nX_train dtypes:\n", X_train.dtypes)
-            # print("\nX_train NaN counts:\n", X_train.isnull().sum())
             return None
 
     def RandomForest1(self, data_df, model_save_path):
@@ -317,13 +297,12 @@ class training():
         Y = data_df[TARGET_VARIABLE]
         X = data_df.drop(TARGET_VARIABLE, axis=1)
 
-        # Remove 'prediction' column if it exists from a prior step and isn't a feature for this model
         if 'prediction' in X.columns:
             X = X.drop('prediction', axis=1)
             print("Dropped 'prediction' column before training RandomForest1.")
 
         param_grid_rf1 = {
-            'regressor__n_estimators': [100, 150], # Reduced for example speed
+            'regressor__n_estimators': [100, 150],
             'regressor__max_depth': [10, 14],
             'regressor__min_samples_split': [2, 4],
             'regressor__min_samples_leaf': [1, 3]
@@ -339,8 +318,6 @@ class training():
         Y = data_df[TARGET_VARIABLE]
         X = data_df.drop(TARGET_VARIABLE, axis=1)
 
-        # For RandomForest2, the 'prediction' column (output of _preprocessing2) is a feature.
-        # Ensure 'prediction' column is numeric and handle NaNs if any.
         if 'prediction' in X.columns:
             X['prediction'] = pd.to_numeric(X['prediction'], errors='coerce')
             if X['prediction'].isnull().any():
@@ -348,7 +325,7 @@ class training():
         else:
             print("Warning: 'prediction' column not found in data for RandomForest2. This model might expect it as a feature.")
 
-        param_grid_rf2 = { # Can be same or different from RF1
+        param_grid_rf2 = {
             'regressor__n_estimators': [100, 180], 
             'regressor__max_depth': [12, 16],
             'regressor__min_samples_split': [2, 5],
@@ -358,16 +335,10 @@ class training():
 
 
 if __name__ == '__main__':
-    # This is an example of how you might run the preprocessing.
-    # Ensure your data is in '../data/processed/' and the
-    # '../models/' and '../new_code/' directories exist or can be created.
-    
-    # Create dummy directories and data for a self-contained example
     os.makedirs("../data/processed", exist_ok=True)
     os.makedirs("../models", exist_ok=True)
     os.makedirs("../new_code", exist_ok=True)
 
-    # Create dummy CSV files based on BATTERY_METADATA keys
     dummy_csv_content = "Voltage,Current,Power,Remaining Capacity,Time to Depletion,Cumulative Actual Disch Ah,Ah Out\n" + \
                         "1,1,1,1,1,1,1\n" + \
                         "2,2,4,0.5,0.5,2,2"
@@ -376,18 +347,14 @@ if __name__ == '__main__':
         with open(f"../data/processed/TEST_{i}_processed.csv", "w") as f:
             f.write(dummy_csv_content)
 
-    # Create a dummy pre-existing model for _preprocessing2 to load, if it doesn't use model1
-    # This dummy model needs to be a valid scikit-learn pipeline model
     try:
         from sklearn.linear_model import LinearRegression
         dummy_pipeline = Pipeline([('regressor', LinearRegression())])
-        # It needs to be trained on something, even dummy data, to have attributes like `predict`
         dummy_X = pd.DataFrame({'Voltage': [1,2], 'Current': [1,2], 'Power': [1,4], 
                                 'Remaining Capacity': [1, .5], 'Cumulative Actual Disch Ah': [1,2], 
                                 'Ah Out': [1,2], 'type': ['b5','b1'], 'capacity': [85,81], 'charged': [85,81]})
         dummy_Y = pd.Series([1,0.5])
 
-        # A minimal preprocessor for the dummy model
         dummy_numerical_features = ['Voltage', 'Current', 'Power', 'Remaining Capacity', 'Cumulative Actual Disch Ah', 'Ah Out', 'capacity', 'charged']
         dummy_categorical_features = ['type']
         dummy_num_transformer = Pipeline(steps=[('imputer', SimpleImputer(strategy='mean'))])
@@ -407,5 +374,4 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"Could not create dummy model for testing: {e}")
 
-    # Run the main preprocessing and training
     processor = preprocessing()

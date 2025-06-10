@@ -155,7 +155,6 @@ class training():
 
         print("Numerical Featrures are : ", numerical_features)
         print("Categorical Featrures are : ", categorical_features)
-
         print("NaN locations:")
         for column in data.columns:
             if data[column].isna().any():

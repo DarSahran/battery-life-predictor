@@ -108,7 +108,7 @@ class preprocessing():
         def predictor(pred, model, data):
             for index, i in data.iterrows():
                 x = pd.DataFrame(i).T
-                pred[index] = model.predict(x)
+                pred[index] = model.predict(x)[0]
 
 
         pred = {}

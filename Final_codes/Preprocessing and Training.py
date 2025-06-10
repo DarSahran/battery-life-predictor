@@ -68,36 +68,6 @@ class preprocessing():
         data = pd.read_csv("../new_code/DATASET.csv")
         model = joblib.load("../models/battery_random_forest_model1.joblib")
 
-        # Generate plots without showing them
-        plt.figure(figsize=(12, 8))
-
-        plt.subplot(2, 2, 1)
-        plt.scatter(data['Voltage'], data['Current'], alpha=0.5)
-        plt.xlabel('Voltage')
-        plt.ylabel('Current')
-        plt.title('Voltage vs Current')
-
-        plt.subplot(2, 2, 2)
-        plt.scatter(data['Power'], data['Remaining Capacity'], alpha=0.5)
-        plt.xlabel('Power')
-        plt.ylabel('Remaining Capacity')
-        plt.title('Power vs Remaining Capacity')
-
-        plt.subplot(2, 2, 3)
-        plt.scatter(data['Time to Depletion'], data['Cumulative Actual Disch Ah'], alpha=0.5)
-        plt.xlabel('Time to Depletion')
-        plt.ylabel('Cumulative Actual Discharge')
-        plt.title('Depletion Time vs Cumulative Discharge')
-
-        plt.subplot(2, 2, 4)
-        plt.scatter(data['Ah Out'], data['Remaining Capacity'], alpha=0.5)
-        plt.xlabel('Ah Out')
-        plt.ylabel('Remaining Capacity')
-        plt.title('Ah Out vs Remaining Capacity')
-
-        plt.tight_layout()
-        plt.savefig("../new_code/data_plots.png")  # Save instead of showing
-
         # Thread-safe predictions
         predictions = [None] * len(data)
         lock = threading.Lock()

@@ -10,6 +10,9 @@ from sklearn.preprocessing import StandardScaler
 import joblib
 import os
 
+# 
+# streamlit run battery_gauge_app.py
+# 
 # Set page configuration
 st.set_page_config(layout="wide", page_title="Battery Life Predictor", page_icon="🔋")
 

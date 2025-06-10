@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import joblib
 import matplotlib.pyplot as plt
+from collections import defaultdict
 
 # --- Complete Battery Metadata ---
 BATTERY_METADATA = {
@@ -87,40 +88,55 @@ def main():
         print(f"Error loading models: {e}")
         return
 
-    # Get unique battery types and their max capacity from metadata
-    battery_type_to_max_capacity = {}
-    for entry in BATTERY_METADATA.values():
-        btype = entry['type']
-        cap = entry['capacity']
-        if btype not in battery_type_to_max_capacity or cap > battery_type_to_max_capacity[btype]:
-            battery_type_to_max_capacity[btype] = cap
+    # Group batteries by type
+    battery_types = defaultdict(list)
+    for test, data in BATTERY_METADATA.items():
+        battery_types[data['type']].append({
+            'test_name': test,
+            'capacity': data['capacity'],
+            'max_charge': data['charged']
+        })
 
-    battery_types = sorted(battery_type_to_max_capacity.keys())
+    # Battery type selection
     print("Available battery types:")
-    for i, t in enumerate(battery_types):
-        print(f"{i+1}. {t.upper()} (Max capacity: {battery_type_to_max_capacity[t]}Ah)")
+    types = sorted(battery_types.keys())
+    for i, t in enumerate(types):
+        print(f"{i+1}. {t.upper()}")
     type_choice = int(input("\nSelect battery type (number): ")) - 1
-    if type_choice < 0 or type_choice >= len(battery_types):
+    if type_choice < 0 or type_choice >= len(types):
         print("Invalid selection. Using first type.")
         type_choice = 0
-    selected_type = battery_types[type_choice]
-    capacity = battery_type_to_max_capacity[selected_type]
+    selected_type = types[type_choice]
 
-    # User enters charge level
-    charged_ah = float(input(f"Enter charged Ah (0 to {capacity}): "))
-    if charged_ah > capacity:
-        print(f"Charged value too high, using max {capacity}Ah.")
-        charged_ah = capacity
+    # Capacity selection for chosen type
+    type_batteries = battery_types[selected_type]
+    print(f"\nAvailable batteries for {selected_type.upper()}:")
+    for i, batt in enumerate(type_batteries):
+        print(f"{i+1}. {batt['test_name']} | {batt['capacity']}Ah (Max charge: {batt['max_charge']}Ah)")
+    cap_choice = int(input("\nSelect battery (number): ")) - 1
+    if cap_choice < 0 or cap_choice >= len(type_batteries):
+        print("Invalid selection. Using first battery.")
+        cap_choice = 0
+    selected_battery = type_batteries[cap_choice]
+    capacity = selected_battery['capacity']
+    max_charge = selected_battery['max_charge']
+
+    # User selects charge level
+    charged_ah = float(input(f"\nEnter charged Ah (0-{max_charge}): "))
+    if charged_ah > max_charge:
+        print(f"Charged value too high, using max {max_charge}Ah.")
+        charged_ah = max_charge
     if charged_ah < 0:
         print("Charged value too low, using 0.")
         charged_ah = 0
 
-    print(f"\nSimulating for type: {selected_type.upper()}, capacity: {capacity}Ah, charged: {charged_ah}Ah")
+    print(f"\nSimulating for type: {selected_type.upper()}, battery: {selected_battery['test_name']}, capacity: {capacity}Ah, charged: {charged_ah}Ah")
 
     # Simulation variables
     TIME_STEP = 0
     cumulative_ah_total = capacity - charged_ah  # Initial discharged Ah
     data_buffer = []
+    prediction_timestamps = []
     prediction_values = []
     remaining_capacity_percent_list = []
 
@@ -137,8 +153,11 @@ def main():
 
         cumulative_ah_total = updated_cumulative_ah
 
-        if voltage < MIN_OPERATIONAL_VOLTAGE or remaining_perc < 0.1:
-            print(f"Simulation ended: Voltage={voltage:.2f}V, SOC={remaining_perc:.2f}% at step {TIME_STEP}")
+        if voltage < MIN_OPERATIONAL_VOLTAGE:
+            print(f"Voltage critical ({voltage:.2f}V) at step {TIME_STEP}")
+            break
+        if remaining_perc < 0.1:
+            print(f"Capacity critical ({remaining_perc:.2f}%) at step {TIME_STEP}")
             break
 
         data_buffer.append({
@@ -155,6 +174,7 @@ def main():
 
         if len(data_buffer) >= TIME_STEPS:
             X_input_df = pd.DataFrame(data_buffer[-TIME_STEPS:])
+            
             try:
                 pred_model1 = model1.predict(X_input_df)
                 X_input_df_for_model2 = X_input_df.copy()
@@ -165,6 +185,7 @@ def main():
                 y_pred_model2 = model2.predict(X_input_df_for_model2)
                 time_remaining_seconds = y_pred_model2[-1]
 
+                prediction_timestamps.append(TIME_STEP)
                 prediction_values.append(time_remaining_seconds)
                 remaining_capacity_percent_list.append(remaining_perc)
                 data_buffer.pop(0)
@@ -184,7 +205,7 @@ def main():
             plt.ylim(0, 100)
             plt.yticks(np.arange(0, 101, 10))
             plt.grid(True, alpha=0.3)
-            plt.title(f"Battery Discharge: {selected_type.upper()} | {capacity}Ah | Charged: {charged_ah}Ah")
+            plt.title(f"Battery Discharge: {selected_type.upper()} | {selected_battery['test_name']} | {capacity}Ah | Charged: {charged_ah}Ah")
             plt.xlabel("Time Remaining (hours)")
             plt.ylabel("Remaining Capacity (%)")
             for t_rem, cap in zip(time_remaining_hours, remaining_capacity_percent_list):
@@ -192,7 +213,7 @@ def main():
             plt.tight_layout()
             plt.show()
 
-    print(f"\nSimulation completed for {selected_type.upper()} ({capacity}Ah, {charged_ah}Ah charged) after {TIME_STEP} steps")
+    print(f"\nSimulation completed for {selected_type.upper()} ({selected_battery['test_name']}, {capacity}Ah, {charged_ah}Ah charged) after {TIME_STEP} steps")
 
 if __name__ == "__main__":
     main()

@@ -174,12 +174,7 @@ def main():
         })
 
         if len(data_buffer) >= TIME_STEPS:
-<<<<<<< HEAD
-            X_input_df = pd.DataFrame(data_buffer[-TIME_STEPS:])
-            
-=======
             X_input_df = pd.DataFrame(data_buffer)
->>>>>>> 625853e8b7155318265aaee2e1c6ef1969bca2fe
             try:
                 pred_model1 = model1.predict(X_input_df)
                 X_input_df_for_model2 = X_input_df.copy()

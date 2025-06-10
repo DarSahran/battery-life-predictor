@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -8,6 +8,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import mean_absolute_error
 import joblib
 import os
+import matplotlib
+matplotlib.use('Agg')  # Avoid Tkinter threading issue
 import matplotlib.pyplot as plt
 import threading
 
@@ -48,49 +50,45 @@ class preprocessing():
             "TEST_17_processed": {"capacity": 88.35, "charged": 88.35, "type": "b3"},
         }
 
-        DATASET = pd.DataFrame()
+        DATASET = []
 
         for i in listdir:
             for j in BATTERY_METADATA.keys():
-                k = j + '.csv'
-                if i == k:
-                    dataset = pd.read_csv(data_dir + i)
+                if i == j + '.csv':
+                    dataset = pd.read_csv(os.path.join(data_dir, i))
                     dataset['type'] = BATTERY_METADATA[j]['type']
                     dataset['capacity'] = BATTERY_METADATA[j]['capacity']
                     dataset['charged'] = BATTERY_METADATA[j]['charged']
-                    DATASET = pd.concat([DATASET, dataset], ignore_index=True)
+                    DATASET.append(dataset)
 
-        with open("../new_code/DATASET.csv", "w") as f:
-            pd.DataFrame.to_csv(DATASET, f, index=False)
+        final_df = pd.concat(DATASET, ignore_index=True)
+        final_df.to_csv("../new_code/DATASET.csv", index=False)
 
     def preprocessing2(self):
         data = pd.read_csv("../new_code/DATASET.csv")
         model = joblib.load("../models/battery_random_forest_model1.joblib")
 
+        # Generate plots without showing them
         plt.figure(figsize=(12, 8))
 
-        # Plot Voltage vs Current
         plt.subplot(2, 2, 1)
         plt.scatter(data['Voltage'], data['Current'], alpha=0.5)
         plt.xlabel('Voltage')
         plt.ylabel('Current')
         plt.title('Voltage vs Current')
 
-        # Plot Power vs Remaining Capacity
         plt.subplot(2, 2, 2)
         plt.scatter(data['Power'], data['Remaining Capacity'], alpha=0.5)
         plt.xlabel('Power')
         plt.ylabel('Remaining Capacity')
         plt.title('Power vs Remaining Capacity')
 
-        # Plot Time to Depletion vs Cumulative Actual Disch Ah
         plt.subplot(2, 2, 3)
         plt.scatter(data['Time to Depletion'], data['Cumulative Actual Disch Ah'], alpha=0.5)
         plt.xlabel('Time to Depletion')
         plt.ylabel('Cumulative Actual Discharge')
         plt.title('Depletion Time vs Cumulative Discharge')
 
-        # Plot Ah Out vs Remaining Capacity
         plt.subplot(2, 2, 4)
         plt.scatter(data['Ah Out'], data['Remaining Capacity'], alpha=0.5)
         plt.xlabel('Ah Out')
@@ -98,178 +96,135 @@ class preprocessing():
         plt.title('Ah Out vs Remaining Capacity')
 
         plt.tight_layout()
-        plt.show()
+        plt.savefig("../new_code/data_plots.png")  # Save instead of showing
 
+        # Thread-safe predictions
+        predictions = [None] * len(data)
+        lock = threading.Lock()
 
-        data['prediction'] = None
-        for _, i in data.iterrows():
-            x = pd.DataFrame(i).T
+        def predictor(start_idx, end_idx):
+            for index in range(start_idx, end_idx):
+                x = data.drop(columns=['Time to Depletion']).iloc[index:index+1]
+                pred = model.predict(x)[0]
+                with lock:
+                    predictions[index] = pred
 
-        def predictor(pred, model, data):
-            for index, i in data.iterrows():
-                x = pd.DataFrame(i).T
-                pred[index] = model.predict(x)[0]
+        threads = []
+        chunk_size = 1000
+        for start in range(0, len(data), chunk_size):
+            end = min(start + chunk_size, len(data))
+            t = threading.Thread(target=predictor, args=(start, end))
+            threads.append(t)
+            t.start()
 
+        for t in threads:
+            t.join()
 
-        pred = {}
-
-        t1 = threading.Thread(target=predictor, args=(pred, model, data.iloc[:1000, :]))
-        t2 = threading.Thread(target=predictor, args=(pred, model, data.iloc[1000:2000, :]))
-        t3 = threading.Thread(target=predictor, args=(pred, model, data.iloc[2000:3000, :]))
-        t4 = threading.Thread(target=predictor, args=(pred, model, data.iloc[3000:4000, :]))
-        t5 = threading.Thread(target=predictor, args=(pred, model, data.iloc[4000:5000, :]))
-        t6 = threading.Thread(target=predictor, args=(pred, model, data.iloc[5000:5437, :]))
-
-        t1.start()
-        t2.start()
-        t3.start()
-        t4.start()
-        t5.start()
-        t6.start()
-
-        t1.join()
-        t2.join()
-        t3.join()
-        t4.join()
-        t5.join()
-        t6.join()
-
-        data['prediction'] = pred
-        with open("../new_code/DATASET2.csv", "w") as f:
-            f.write(
-                data.to_csv(index=False)
-            )
+        data['prediction'] = predictions
+        data.to_csv("../new_code/DATASET2.csv", index=False)
 
 
 class training():
     def RandomForest1(self):
         TARGET_VARIABLE = 'Time to Depletion'
         data = pd.read_csv("../new_code/DATASET.csv")
-        data.head()
 
         Y = data[TARGET_VARIABLE]
-        X = data.drop(TARGET_VARIABLE, axis=1)
+        X = data.drop(columns=[TARGET_VARIABLE])
 
         numerical_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
         categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
 
-        print("Numerical Featrures are : ", numerical_features)
-        print("Categorical Featrures are : ", categorical_features)
-        print("NaN locations:")
+        print("Numerical Features:", numerical_features)
+        print("Categorical Features:", categorical_features)
+
         for column in data.columns:
             if data[column].isna().any():
-                print(f"\n{column}:")
+                print(f"NaNs in {column}:")
                 print(data[data[column].isna()].index)
-
 
         X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.15, random_state=42)
 
-        numerical_transformer = Pipeline(steps=[
-            ('pass',
-             'passthrough')
-        ])
-        categorical_transformer = Pipeline(steps=[
-            ('onehot',
-             OneHotEncoder(handle_unknown='ignore',
-                           sparse_output=False))
-        ])
-
         preprocessor = ColumnTransformer(transformers=[
-            ('num', numerical_transformer, numerical_features),
-            ('cat', categorical_transformer, categorical_features)
-        ]
-            , remainder='passthrough')
+            ('num', 'passthrough', numerical_features),
+            ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_features)
+        ])
 
         rf_model = RandomForestRegressor(
             random_state=42,
-            bootstrap=True,
-            criterion='absolute_error',
-            n_jobs=-1,
             n_estimators=150,
             max_depth=14,
             min_samples_split=2,
             min_samples_leaf=1,
-            max_features='sqrt'
+            max_features='sqrt',
+            bootstrap=True,
+            criterion='absolute_error',
+            n_jobs=-1
         )
 
-        pipeline = Pipeline(steps=[
+        pipeline = Pipeline([
             ('preprocessor', preprocessor),
             ('regressor', rf_model)
         ])
 
-        print("Initiating Training ...")
+        print("Training Random Forest Model 1...")
         model = pipeline.fit(X_train, Y_train)
 
         Y_pred = model.predict(X_test)
-        mae = mean_absolute_error(Y_test, Y_pred)
-        print(f"Mean Absolute Error is : {mae:.2f}")
+        print(f"Mean Absolute Error: {mean_absolute_error(Y_test, Y_pred):.2f}")
 
         joblib.dump(model, "../models/battery_random_forest_model1.joblib")
 
     def RandomForest2(self):
         TARGET_VARIABLE = 'Time to Depletion'
         data = pd.read_csv("../new_code/DATASET2.csv")
-        data.head()
 
         Y = data[TARGET_VARIABLE]
-        X = data.drop(TARGET_VARIABLE, axis=1)
+        X = data.drop(columns=[TARGET_VARIABLE])
 
         numerical_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
         categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
 
-        print("Numerical Featrures are : ", numerical_features)
-        print("Categorical Featrures are : ", categorical_features)
+        print("Numerical Features:", numerical_features)
+        print("Categorical Features:", categorical_features)
 
-        print("NaN locations:")
         for column in data.columns:
             if data[column].isna().any():
-                print(f"\n{column}:")
+                print(f"NaNs in {column}:")
                 print(data[data[column].isna()].index)
-
 
         X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.15, random_state=42)
 
-        numerical_transformer = Pipeline(steps=[
-            ('pass',
-             'passthrough')
-        ])
-        categorical_transformer = Pipeline(steps=[
-            ('onehot',
-             OneHotEncoder(handle_unknown='ignore',
-                           sparse_output=False))
-        ])
-
         preprocessor = ColumnTransformer(transformers=[
-            ('num', numerical_transformer, numerical_features),
-            ('cat', categorical_transformer, categorical_features)
-        ]
-            , remainder='passthrough')
+            ('num', 'passthrough', numerical_features),
+            ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_features)
+        ])
 
         rf_model = RandomForestRegressor(
             random_state=42,
-            bootstrap=True,
-            criterion='absolute_error',
-            n_jobs=-1,
             n_estimators=100,
             max_depth=14,
             min_samples_split=4,
             min_samples_leaf=1,
-            max_features='sqrt'
+            max_features='sqrt',
+            bootstrap=True,
+            criterion='absolute_error',
+            n_jobs=-1
         )
 
-        pipeline = Pipeline(steps=[
+        pipeline = Pipeline([
             ('preprocessor', preprocessor),
             ('regressor', rf_model)
         ])
 
-        print("Initiating Training ...")
+        print("Training Random Forest Model 2...")
         model = pipeline.fit(X_train, Y_train)
 
         Y_pred = model.predict(X_test)
-        mae = mean_absolute_error(Y_test, Y_pred)
-        print(f"Mean Absolute Error is : {mae:.2f}")
+        print(f"Mean Absolute Error: {mean_absolute_error(Y_test, Y_pred):.2f}")
 
         joblib.dump(model, "../models/battery_random_forest_model2.joblib")
+
 
 if __name__ == "__main__":
     preprocessing()

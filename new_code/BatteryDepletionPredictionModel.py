@@ -4,8 +4,8 @@ from datetime import datetime
 import joblib
 import matplotlib.pyplot as plt
 
-MODEL1_PATH = "../models/battery_random_forest_model1.joblib"
-MODEL2_PATH = "../models/battery_random_forest_model2.joblib"
+MODEL1_PATH = "../Final_codes/battery_random_forest_model1.joblib"
+MODEL2_PATH = "../Final_codes/battery_random_forest_model2.joblib"
 TIME_STEPS = 10
 
 # --- Simulation Parameters ---

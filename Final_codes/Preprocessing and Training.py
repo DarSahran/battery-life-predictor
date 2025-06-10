@@ -61,7 +61,7 @@ class preprocessing():
                     DATASET.append(dataset)
 
         final_df = pd.concat(DATASET, ignore_index=True)
-        final_df.to_csv("../new_code/DATASET.csv", index=False)
+        final_df.to_csv("../Final_codes/DATASET.csv", index=False)
 
     @staticmethod
     def add_engineered_features(data):
@@ -72,9 +72,9 @@ class preprocessing():
         return data
 
     def preprocessing2(self):
-        data = pd.read_csv("../new_code/DATASET.csv")
+        data = pd.read_csv("DATASET.csv")
         data = self.add_engineered_features(data)
-        model, feature_cols = joblib.load("../models/battery_random_forest_model1.joblib")
+        model, feature_cols = joblib.load("../Final_codes/battery_random_forest_model1.joblib")
 
         predictions = [None] * len(data)
         lock = threading.Lock()
@@ -98,7 +98,7 @@ class preprocessing():
             t.join()
 
         data['prediction'] = predictions
-        data.to_csv("../new_code/DATASET2.csv", index=False)
+        data.to_csv("../Final_codes/DATASET2.csv", index=False)
 
 class training():
     @staticmethod
@@ -111,7 +111,7 @@ class training():
 
     def RandomForest1(self):
         TARGET_VARIABLE = 'Time to Depletion'
-        data = pd.read_csv("../new_code/DATASET.csv")
+        data = pd.read_csv("DATASET.csv")
         data = self.add_engineered_features(data)
 
         numerical_features = [
@@ -196,11 +196,11 @@ class training():
             print(importance_df.head(10))
 
         # Save both model and feature columns for safe prediction
-        joblib.dump((pipeline, X.columns.tolist()), "../models/battery_random_forest_model1.joblib")
+        joblib.dump((pipeline, X.columns.tolist()), "battery_random_forest_model1.joblib")
 
     def RandomForest2(self):
         TARGET_VARIABLE = 'Time to Depletion'
-        data = pd.read_csv("../new_code/DATASET2.csv")
+        data = pd.read_csv("DATASET2.csv")
         data = self.add_engineered_features(data)
 
         numerical_features = [
@@ -282,7 +282,7 @@ class training():
             print("Top 10 Features by Importance:")
             print(importance_df.head(10))
 
-        joblib.dump((pipeline, X.columns.tolist()), "../models/battery_random_forest_model2.joblib")
+        joblib.dump((pipeline, X.columns.tolist()), "../Final_codes/battery_random_forest_model2.joblib")
 
 if __name__ == "__main__":
     preprocessing()

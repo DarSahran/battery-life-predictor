@@ -15,9 +15,13 @@ import threading
 class preprocessing():
     def __init__(self):
         Trainer = training()
+        print("Initiating Preprocessing... 1\n")
         self.preprocessing1()
+        print("Training Random Forest Model 1... \n")
         Trainer.RandomForest1()
+        print("Initiating Preprocessing... 2\n")
         self.preprocessing2()
+        print("Training Random Forest Model 2... \n")
         Trainer.RandomForest2()
 
     def preprocessing1(self):
@@ -61,7 +65,7 @@ class preprocessing():
 
     def preprocessing2(self):
         data = pd.read_csv("../new_code/DATASET.csv")
-        model = joblib.load("../models/battery_random_forest_model.joblib")
+        model = joblib.load("../models/battery_random_forest_model1.joblib")
 
         plt.figure(figsize=(12, 8))
 
@@ -182,7 +186,11 @@ class training():
             bootstrap=True,
             criterion='absolute_error',
             n_jobs=-1,
-            n_estimators=100
+            n_estimators=150,
+            max_depth=14,
+            min_samples_split=2,
+            min_samples_leaf=1,
+            max_features='sqrt'
         )
 
         pipeline = Pipeline(steps=[
@@ -190,38 +198,14 @@ class training():
             ('regressor', rf_model)
         ])
 
-        param_grid = {
-            'regressor__n_estimators': [100, 150, 200],
-            'regressor__max_depth': [10, 12, 14],
-            'regressor__min_samples_split': [2, 3, 4],
-            'regressor__min_samples_leaf': [1, 2, 3]
-        }
+        print("Initiating Training ...")
+        model = pipeline.fit(X_train, Y_train)
 
-        grid_search = GridSearchCV(
-            estimator=pipeline,
-            param_grid=param_grid,
-            scoring='neg_mean_absolute_error',
-            cv=2,
-            verbose=2,
-            n_jobs=-1,
-            return_train_score=True,
-            refit=True
-        )
-
-        print("Initiating the Grid Search...")
-        grid_search.fit(X_train, Y_train)
-        print("Search Finished")
-
-        best_match = grid_search.best_estimator_
-        Y_pred = best_match.predict(X_test)
+        Y_pred = model.predict(X_test)
         mae = mean_absolute_error(Y_test, Y_pred)
         print(f"Mean Absolute Error is : {mae:.2f}")
 
-        joblib.dump(best_match, "../models/battery_random_forest_model1.joblib")
-
-        parameters = grid_search.best_params_
-        print("Best Parameters:", parameters)
-
+        joblib.dump(model, "../models/battery_random_forest_model1.joblib")
 
     def RandomForest2(self):
         TARGET_VARIABLE = 'Time to Depletion'
@@ -267,7 +251,11 @@ class training():
             bootstrap=True,
             criterion='absolute_error',
             n_jobs=-1,
-            n_estimators=100
+            n_estimators=100,
+            max_depth=14,
+            min_samples_split=4,
+            min_samples_leaf=1,
+            max_features='sqrt'
         )
 
         pipeline = Pipeline(steps=[
@@ -275,36 +263,14 @@ class training():
             ('regressor', rf_model)
         ])
 
-        param_grid = {
-            'regressor__n_estimators': [100, 150, 200],
-            'regressor__max_depth': [10, 12, 14],
-            'regressor__min_samples_split': [2, 3, 4],
-            'regressor__min_samples_leaf': [1, 2, 3]
-        }
+        print("Initiating Training ...")
+        model = pipeline.fit(X_train, Y_train)
 
-        grid_search = GridSearchCV(
-            estimator=pipeline,
-            param_grid=param_grid,
-            scoring='neg_mean_absolute_error',
-            cv=2,
-            verbose=2,
-            n_jobs=-1,
-            return_train_score=True,
-            refit=True
-        )
-
-        print("Initiating the Grid Search...")
-        grid_search.fit(X_train, Y_train)
-        print("Search Finished")
-
-        best_match = grid_search.best_estimator_
-        Y_pred = best_match.predict(X_test)
+        Y_pred = model.predict(X_test)
         mae = mean_absolute_error(Y_test, Y_pred)
         print(f"Mean Absolute Error is : {mae:.2f}")
 
-        joblib.dump(best_match, "../models/battery_random_forest_model2.joblib")
+        joblib.dump(model, "../models/battery_random_forest_model2.joblib")
 
-        parameters = grid_search.best_params_
-        print("Best Parameters:", parameters)
 if __name__ == "__main__":
     preprocessing()

@@ -48,37 +48,16 @@ def get_files_by_battery_type(battery_type, folder_path):
                 files.append(fname + ".csv")
     return files
 
-def derive_features(df, meta):
+def predictions(df, meta, type, ini_charge):
     time_step_h = 1 / 60  # 1 min per row
     cumulative_ah = 0.0
     results = []
     for idx, row in df.iterrows():
         current = row["Current"]
         voltage = row["Voltage"]
-        ah_out = current * time_step_h
-        cumulative_ah += ah_out
-        remaining_capacity = meta["charged"] - cumulative_ah
-        power = voltage * current
-        discharge_rate = current / (voltage + 1e-6)
-        discharge_ratio = ah_out / (meta["charged"] + 1e-6)
-        dod = (cumulative_ah / meta["charged"]) * 100  # Depth of Discharge in %
-        step_data = {
-            "type": BATTERY_TYPE_MAPPING[meta["type"].lower()],
-            "Current": current,
-            "Voltage": voltage,
-            "Ah Out": ah_out,
-            "Power": power,
-            "Remaining Capacity": remaining_capacity,
-            "capacity": meta["capacity"],
-            "charged": meta["charged"],
-            "discharge_rate": discharge_rate,
-            "discharge_ratio": discharge_ratio,
-            "step_index": idx,
-            "DoD": dod,
-            "Hour": idx / 60  # Each step is 1 min
-        }
-        results.append(step_data)
-    return pd.DataFrame(results)
+        Predictor.feature_derivator(voltage, current, type, ini_charge)
+
+
 
 def format_time(seconds):
     if seconds < 60:
@@ -130,29 +109,9 @@ if not os.path.exists(csv_path):
     st.stop()
 
 df = load_csv(csv_path)
-features_df = derive_features(df, meta)
+predictions(df, meta, BATTERY_TYPE_MAPPING[meta["type"]], meta["charged"])
 
-# 4. Load models (relative paths)
-model1 = load_model(MODEL1_PATH)
-model2 = load_model(MODEL2_PATH)
 
-# 5. Model 1 prediction
-pred1 = model1.predict(features_df)
-if pred1.ndim == 2 and pred1.shape[1] == 2:
-    features_df['predicted TOD'] = pred1[:, 0]
-    features_df['predicted CDC'] = pred1[:, 1]
-else:
-    features_df['predicted TOD'] = pred1
-    features_df['predicted CDC'] = 0
-
-# 6. Model 2 prediction
-final_pred = model2.predict(features_df)
-if final_pred.ndim == 2 and final_pred.shape[1] == 2:
-    features_df['Final Predicted TOD'] = final_pred[:, 0]
-    features_df['Final Predicted CDC'] = final_pred[:, 1]
-else:
-    features_df['Final Predicted TOD'] = final_pred
-    features_df['Final Predicted CDC'] = np.zeros_like(final_pred)
 
 # 7. Real-time simulation and plotting
 st.subheader("Real-Time Simulation")

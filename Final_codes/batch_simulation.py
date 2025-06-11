@@ -78,6 +78,16 @@ def process_all_by_type(folder_path="../data/processed", output_dir=OUTPUT_DIR):
             dod_vals.append(dod)
             step_indices.append(idx / 60)
 
+        # Print battery working time information
+        if len(step_indices) > 0:
+            total_runtime = max(step_indices)
+            initial_tod = max(tod_vals) if tod_vals else 0
+            final_tod = min(tod_vals) if tod_vals else 0
+            print(f"  ✓ Total Runtime: {total_runtime:.2f} hours")
+            print(f"  ✓ Initial Predicted Time Remaining: {initial_tod:.2f} hours")
+            print(f"  ✓ Final Predicted Time Remaining: {final_tod:.2f} hours")
+            print(f"  ✓ Prediction Range: {initial_tod - final_tod:.2f} hours")
+
         if battery_type not in results_by_type:
             results_by_type[battery_type] = []
             meta_by_type[battery_type] = meta
@@ -94,61 +104,90 @@ def process_all_by_type(folder_path="../data/processed", output_dir=OUTPUT_DIR):
     # For each battery type, plot and export
     for battery_type, test_list in results_by_type.items():
         meta = meta_by_type[battery_type]
+        
+        print(f"\n=== {battery_type.upper()} BATTERY TYPE SUMMARY ===")
+        
+        # Calculate and print working times for each test
+        total_runtime_all = 0
+        for test in test_list:
+            if len(test["step"]) > 0:
+                test_runtime = max(test["step"])
+                test_initial_pred = max(test["tod"]) if test["tod"] else 0
+                test_final_pred = min(test["tod"]) if test["tod"] else 0
+                total_runtime_all += test_runtime
+                print(f"  {test['testname']}: Runtime={test_runtime:.2f}h, "
+                      f"Pred Range={test_initial_pred:.1f}h→{test_final_pred:.1f}h")
+        
+        avg_runtime = total_runtime_all / len(test_list) if test_list else 0
+        print(f"  Average Runtime: {avg_runtime:.2f} hours")
+        print(f"  Number of Tests: {len(test_list)}")
+        
         colors = itertools.cycle(plt.cm.tab10.colors)
         # --- Plot 1: DoD (%) vs Time (hours) ---
-        plt.figure(figsize=(10, 5))
+        plt.figure(figsize=(12, 6))
         all_steps = []
         all_dod = []
         for test in test_list:
             color = next(colors)
-            plt.plot(test["step"], test["dod"], label=f"{test['testname']}", color=color)
+            runtime = max(test["step"]) if test["step"] else 0
+            plt.plot(test["step"], test["dod"], 
+                    label=f"{test['testname']} ({runtime:.1f}h)", color=color)
             # Annotate every 50th point and the last point
             for i in range(0, len(test["step"]), 50):
-                plt.annotate(f"{test['dod'][i]:.1f}%", (test["step"][i], test["dod"][i]), fontsize=8, color=color)
+                plt.annotate(f"{test['dod'][i]:.1f}%", (test["step"][i], test["dod"][i]), 
+                           fontsize=8, color=color)
             if len(test["step"]) > 0:
-                plt.annotate(f"{test['dod'][-1]:.1f}%", (test["step"][-1], test["dod"][-1]), fontsize=8, color=color)
+                plt.annotate(f"{test['dod'][-1]:.1f}%", (test["step"][-1], test["dod"][-1]), 
+                           fontsize=8, color=color)
             all_steps.extend(test["step"])
             all_dod.extend(test["dod"])
+        
         # Best fit line for all data
         best_fit_dod, _ = best_fit_line(all_steps, all_dod)
         plt.plot(all_steps, best_fit_dod, color='red', linewidth=2.5, linestyle='--', label="Best Fit Line")
         plt.xlabel("Time (hours)")
         plt.ylabel("Depth of Discharge (%)")
         plt.ylim(0, 100)
-        plt.title(f"{battery_type.upper()} - DoD vs Time (All Tests)")
+        plt.title(f"{battery_type.upper()} - DoD vs Time (Avg Runtime: {avg_runtime:.1f}h)")
         plt.grid(True)
         plt.legend()
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f"{battery_type.upper()}_DoD_vs_Time.png"))
+        plt.savefig(os.path.join(output_dir, f"{battery_type.upper()}_DoD_vs_Time.png"), dpi=150)
         plt.close()
 
         # --- Plot 2: Remaining Capacity (Ah) vs Predicted Time Remaining (hours) ---
-        plt.figure(figsize=(10, 5))
+        plt.figure(figsize=(12, 6))
         all_tod = []
         all_ah = []
         colors = itertools.cycle(plt.cm.tab10.colors)
         for test in test_list:
             color = next(colors)
-            plt.plot(test["tod"], test["ah"], marker='o', label=f"{test['testname']}", color=color)
+            runtime = max(test["step"]) if test["step"] else 0
+            pred_range = (max(test["tod"]) - min(test["tod"])) if test["tod"] else 0
+            plt.plot(test["tod"], test["ah"], marker='o', markersize=3,
+                    label=f"{test['testname']} ({runtime:.1f}h, ±{pred_range:.1f}h)", color=color)
             # Annotate every 50th point and the last point
             for i in range(0, len(test["tod"]), 50):
-                plt.annotate(f"{test['ah'][i]:.1f}Ah", (test["tod"][i], test["ah"][i]), fontsize=8, color=color)
+                plt.annotate(f"{test['ah'][i]:.1f}Ah", (test["tod"][i], test["ah"][i]), 
+                           fontsize=8, color=color)
             if len(test["tod"]) > 0:
-                plt.annotate(f"{test['ah'][-1]:.1f}Ah", (test["tod"][-1], test["ah"][-1]), fontsize=8, color=color)
+                plt.annotate(f"{test['ah'][-1]:.1f}Ah", (test["tod"][-1], test["ah"][-1]), 
+                           fontsize=8, color=color)
             all_tod.extend(test["tod"])
             all_ah.extend(test["ah"])
+        
         # Best fit line for all data
         best_fit_ah, _ = best_fit_line(all_tod, all_ah)
         plt.plot(all_tod, best_fit_ah, color='red', linewidth=2.5, linestyle='--', label="Best Fit Line")
         plt.xlabel("Predicted Time Remaining (Hours)")
         plt.ylabel("Remaining Capacity (Ah)")
-        plt.title(f"{battery_type.upper()} - Remaining Capacity vs Time Remaining (All Tests)")
+        plt.title(f"{battery_type.upper()} - Remaining Capacity vs Time Remaining (Avg Runtime: {avg_runtime:.1f}h)")
         plt.ylim(0, meta['charged'])
         plt.gca().invert_xaxis()
         plt.grid(True)
         plt.legend()
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f"{battery_type.upper()}_RemainingAh_vs_TimeRemaining.png"))
+        plt.savefig(os.path.join(output_dir, f"{battery_type.upper()}_RemainingAh_vs_TimeRemaining.png"), dpi=150)
         plt.close()
 
         print(f"Saved plots for {battery_type.upper()}")

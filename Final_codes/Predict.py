@@ -56,9 +56,8 @@ class prediction():
 
     def feature_derivator(self, voltage, current, battery_type, ini_charge):
         time_step = 1  # seconds
-        # Calculate Ah out for this step (convert seconds to hours)
         ah_out = (abs(current) * time_step) / 3600
-        # Get battery capacity from metadata
+
         battery_capacity = None
         for meta in self.metadata.values():
             if meta['type'] == battery_type:
@@ -72,14 +71,15 @@ class prediction():
         discharge_rate = abs(current) / battery_capacity
         discharge_ratio = ah_out / battery_capacity
 
-        # Wrap scalars in lists to avoid pandas error
+        # Use BATTERY_TYPE_MAPPING to encode battery type as int
+        type_encoding = {'tn1': 0, 'b1': 1, 'b2': 2, 'b3': 3, 'b5': 4}
         df = pd.DataFrame({
             'Voltage': [float(voltage)],
             'Current': [float(current)],
             'Ah Out': [float(ah_out)],
             'Power': [float(power)],
             'Remaining Capacity': [float(remaining_capacity)],
-            'type': [battery_type],
+            'type': [type_encoding[battery_type]],
             'capacity': [float(battery_capacity)],
             'charged': [float(ini_charge)],
             'discharge_rate': [float(discharge_rate)],

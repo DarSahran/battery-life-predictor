@@ -1,41 +1,56 @@
 import os
 import pandas as pd
-import matplotlib.pyplot as plt
-import Predict
-
-# IMPORTANT: Set the backend before importing pyplot or creating any plots
+import numpy as np
 import matplotlib
 matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import Predict
+import itertools
 
 # --- Configuration ---
 BATTERY_TYPE_MAPPING = {'tn1': 0, 'b1': 1, 'b2': 2, 'b3': 3, 'b5': 4}
-SMOOTH_WINDOW = 10
 OUTPUT_DIR = "./predictions"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 Predictor = Predict.prediction()
 
-def apply_smoothing(x, window=SMOOTH_WINDOW):
-    return pd.Series(x).rolling(window=window, min_periods=1).mean().values
+def best_fit_line(x, y):
+    x = np.array(x)
+    y = np.array(y)
+    mask = ~np.isnan(x) & ~np.isnan(y)
+    x = x[mask]
+    y = y[mask]
+    if len(x) < 2:
+        return np.full_like(x, np.nan)
+    coef = np.polyfit(x, y, 1)
+    poly1d_fn = np.poly1d(coef)
+    return poly1d_fn(x), coef
 
-def run_simulation(csv_path, output_dir=OUTPUT_DIR):
-    try:
+def process_all_by_type(folder_path="../data/processed", output_dir=OUTPUT_DIR):
+    results_by_type = {}
+    meta_by_type = {}
+    testnames_by_type = {}
+
+    csv_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.csv')]
+    print(f"Found {len(csv_files)} CSV files to process")
+
+    for csv_path in csv_files:
         df = pd.read_csv(csv_path)
         filename = os.path.basename(csv_path)
         key = filename.replace('.csv', '')
         meta = Predictor.metadata.get(key)
         if not meta:
             print(f"No metadata found for {filename}")
-            return
-        type_code = BATTERY_TYPE_MAPPING.get(meta['type'].lower())
+            continue
+        battery_type = meta['type'].lower()
+        type_code = BATTERY_TYPE_MAPPING.get(battery_type)
         if type_code is None:
             print(f"Unknown battery type for {filename}")
-            return
+            continue
 
-        print(f"\nProcessing: {filename} (Type: {meta['type']}, Charged: {meta['charged']}Ah)")
+        print(f"Processing: {filename} (Type: {meta['type']}, Charged: {meta['charged']}Ah)")
 
         dod_vals, tod_vals, capacity_ah, step_indices = [], [], [], []
-
         for idx, row in df.iterrows():
             features = pd.DataFrame({
                 'Current': [row['Current']],
@@ -63,65 +78,80 @@ def run_simulation(csv_path, output_dir=OUTPUT_DIR):
             dod_vals.append(dod)
             step_indices.append(idx / 60)
 
-        # Smoothing
-        smooth_dod_vals = apply_smoothing(dod_vals)
-        smooth_tod_vals = apply_smoothing(tod_vals)
-        smooth_capacity_ah = apply_smoothing(capacity_ah)
-
-        # Save results
-        results_df = pd.DataFrame({
-            "Step (hr)": step_indices,
-            "Remaining Capacity (Ah)": capacity_ah,
-            "Depth of Discharge (%)": dod_vals,
-            "Predicted Time Remaining (hr)": tod_vals,
+        if battery_type not in results_by_type:
+            results_by_type[battery_type] = []
+            meta_by_type[battery_type] = meta
+            testnames_by_type[battery_type] = []
+        results_by_type[battery_type].append({
+            "testname": key,
+            "step": step_indices,
+            "dod": dod_vals,
+            "tod": tod_vals,
+            "ah": capacity_ah
         })
+        testnames_by_type[battery_type].append(key)
 
-        output_path = os.path.join(output_dir, f"{key}_predictions.csv")
-        results_df.to_csv(output_path, index=False)
-        print(f"Saved results to {output_path}")
-
-        # Plot 1: DoD (%) vs Time (hours)
-        plt.figure(figsize=(8, 4))
-        plt.plot(step_indices, dod_vals, color='blue', alpha=0.3, label="Raw")
-        plt.plot(step_indices, smooth_dod_vals, color='blue', linewidth=2, label="Smoothed")
+    # For each battery type, plot and export
+    for battery_type, test_list in results_by_type.items():
+        meta = meta_by_type[battery_type]
+        colors = itertools.cycle(plt.cm.tab10.colors)
+        # --- Plot 1: DoD (%) vs Time (hours) ---
+        plt.figure(figsize=(10, 5))
+        all_steps = []
+        all_dod = []
+        for test in test_list:
+            color = next(colors)
+            plt.plot(test["step"], test["dod"], label=f"{test['testname']}", color=color)
+            # Annotate every 50th point and the last point
+            for i in range(0, len(test["step"]), 50):
+                plt.annotate(f"{test['dod'][i]:.1f}%", (test["step"][i], test["dod"][i]), fontsize=8, color=color)
+            if len(test["step"]) > 0:
+                plt.annotate(f"{test['dod'][-1]:.1f}%", (test["step"][-1], test["dod"][-1]), fontsize=8, color=color)
+            all_steps.extend(test["step"])
+            all_dod.extend(test["dod"])
+        # Best fit line for all data
+        best_fit_dod, _ = best_fit_line(all_steps, all_dod)
+        plt.plot(all_steps, best_fit_dod, color='red', linewidth=2.5, linestyle='--', label="Best Fit Line")
         plt.xlabel("Time (hours)")
         plt.ylabel("Depth of Discharge (%)")
         plt.ylim(0, 100)
-        plt.title(f"DoD vs Time - {meta['type'].upper()} (Charged: {meta['charged']}Ah)")
+        plt.title(f"{battery_type.upper()} - DoD vs Time (All Tests)")
         plt.grid(True)
         plt.legend()
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f"{key}_dod.png"))
+        plt.savefig(os.path.join(output_dir, f"{battery_type.upper()}_DoD_vs_Time.png"))
         plt.close()
 
-        # Plot 2: Remaining Capacity (Ah) vs Predicted Time Remaining (hours)
-        plt.figure(figsize=(8, 4))
-        plt.plot(smooth_tod_vals, smooth_capacity_ah, marker='o', color='green')
-        for i, (x, y) in enumerate(zip(smooth_tod_vals, smooth_capacity_ah)):
-            if i % 10 == 0 or i == len(smooth_tod_vals)-1:
-                plt.annotate(f"{y:.1f}Ah", (x, y), textcoords="offset points", xytext=(0,5), ha='center', fontsize=8)
+        # --- Plot 2: Remaining Capacity (Ah) vs Predicted Time Remaining (hours) ---
+        plt.figure(figsize=(10, 5))
+        all_tod = []
+        all_ah = []
+        colors = itertools.cycle(plt.cm.tab10.colors)
+        for test in test_list:
+            color = next(colors)
+            plt.plot(test["tod"], test["ah"], marker='o', label=f"{test['testname']}", color=color)
+            # Annotate every 50th point and the last point
+            for i in range(0, len(test["tod"]), 50):
+                plt.annotate(f"{test['ah'][i]:.1f}Ah", (test["tod"][i], test["ah"][i]), fontsize=8, color=color)
+            if len(test["tod"]) > 0:
+                plt.annotate(f"{test['ah'][-1]:.1f}Ah", (test["tod"][-1], test["ah"][-1]), fontsize=8, color=color)
+            all_tod.extend(test["tod"])
+            all_ah.extend(test["ah"])
+        # Best fit line for all data
+        best_fit_ah, _ = best_fit_line(all_tod, all_ah)
+        plt.plot(all_tod, best_fit_ah, color='red', linewidth=2.5, linestyle='--', label="Best Fit Line")
         plt.xlabel("Predicted Time Remaining (Hours)")
         plt.ylabel("Remaining Capacity (Ah)")
-        plt.title(f"Remaining Capacity vs Time Remaining - {meta['type'].upper()} (Charged: {meta['charged']}Ah)")
+        plt.title(f"{battery_type.upper()} - Remaining Capacity vs Time Remaining (All Tests)")
         plt.ylim(0, meta['charged'])
         plt.gca().invert_xaxis()
         plt.grid(True)
+        plt.legend()
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f"{key}_ah.png"))
+        plt.savefig(os.path.join(output_dir, f"{battery_type.upper()}_RemainingAh_vs_TimeRemaining.png"))
         plt.close()
 
-    except Exception as e:
-        print(f"Error processing {csv_path}: {e}")
-
-def main():
-    folder_path = "../data/processed"
-    if not os.path.exists(folder_path):
-        print(f"Directory not found: {folder_path}")
-        return
-    csv_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.csv')]
-    print(f"Found {len(csv_files)} CSV files to process")
-    for csv_path in csv_files:
-        run_simulation(csv_path)
+        print(f"Saved plots for {battery_type.upper()}")
 
 if __name__ == "__main__":
-    main()
+    process_all_by_type()

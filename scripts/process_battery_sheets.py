@@ -23,8 +23,8 @@ battery_info = {
 }
 
 # Paths
-FILE_PATH = r"E:\Battey_Gauge\data\Temp_Rev_Tubular26_Tests.xlsx"
-OUTPUT_DIR = r"E:\Battey_Gauge\processed_sheets"
+FILE_PATH = r"E:\battery_gauge\battery-life-predictor\data\excel\Temp_Rev_Tubular26_Tests.xlsx"
+OUTPUT_DIR = r"E:\battery_gauge\battery-life-predictor\data\processed"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Load Excel

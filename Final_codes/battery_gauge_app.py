@@ -3,37 +3,13 @@ import time
 import pandas as pd
 import numpy as np
 import streamlit as st
-import joblib
 import matplotlib.pyplot as plt
 import Predict
 
 Predictor = Predict.prediction()
-Predicted_TOD_CDC = []
 
-# --- Model paths (relative) ---
-MODEL1_PATH = "../Final_codes/battery_random_forest_model1.joblib"
-MODEL2_PATH = "../Final_codes/battery_random_forest_model2.joblib"
-
-# --- Battery metadata (from paste.txt) ---
-BATTERY_METADATA = {
-    "TEST_1_processed": {"capacity": 85, "charged": 85, "type": "b5"},
-    "TEST_2_processed": {"capacity": 81.28, "charged": 81.28, "type": "b1"},
-    "TEST_3_processed": {"capacity": 85, "charged": 85, "type": "b5"},
-    "TEST_4_processed": {"capacity": 85, "charged": 85, "type": "b2"},
-    "TEST_5_processed": {"capacity": 88.81, "charged": 88.81, "type": "b2"},
-    "TEST_6_processed": {"capacity": 81.84, "charged": 81.84, "type": "b1"},
-    "TEST_7_processed": {"capacity": 81.84, "charged": 36, "type": "b1"},
-    "TEST_8_processed": {"capacity": 88.81, "charged": 27, "type": "b2"},
-    "TEST_9_processed": {"capacity": 85, "charged": 80, "type": "tn1"},
-    "TEST_10_processed": {"capacity": 85, "charged": 54, "type": "tn1"},
-    "TEST_11_processed": {"capacity": 85, "charged": 85, "type": "b5"},
-    "TEST_12_processed": {"capacity": 85, "charged": 67, "type": "b5"},
-    "TEST_13_processed": {"capacity": 85, "charged": 85, "type": "b5"},
-    "TEST_14_processed": {"capacity": 88.83, "charged": 52, "type": "b3"},
-    "TEST_15_processed": {"capacity": 88.35, "charged": 70, "type": "b3"},
-    "TEST_16_processed": {"capacity": 88.35, "charged": 61, "type": "b3"},
-    "TEST_17_processed": {"capacity": 88.35, "charged": 88.35, "type": "b3"},
-}
+# Battery metadata (same as in Predict.py)
+BATTERY_METADATA = Predictor.metadata
 BATTERY_TYPE_MAPPING = {'tn1': 0, 'b1': 1, 'b2': 2, 'b3': 3, 'b5': 4}
 
 def get_file_metadata(filename):
@@ -49,16 +25,6 @@ def get_files_by_battery_type(battery_type, folder_path):
                 files.append(fname + ".csv")
     return files
 
-def predictions(df, meta, type, ini_charge):
-    time_step_h = 1 / 60  # 1 min per row
-    cumulative_ah = 0.0
-    results = []
-    for idx, row in df.iterrows():
-        current = row["Current"]
-        voltage = row["Voltage"]
-        Predicted_TOD_CDC.append(Predictor.feature_derivator(voltage, current, type, ini_charge))
-
-
 def format_time(seconds):
     if seconds < 60:
         return f"{int(seconds)} seconds"
@@ -72,22 +38,18 @@ def format_time(seconds):
         return f"{hours} hr {minutes} min"
 
 @st.cache_data
-def load_model(path):
-    return joblib.load(path)
-
-@st.cache_data
 def load_csv(path):
     return pd.read_csv(path)
 
-# --- Streamlit UI ---
+# Streamlit UI
 st.set_page_config(page_title="Battery Life Real-Time Simulation & Prediction", page_icon="🔋")
 st.title("🔋 Battery Life Real-Time Simulation & Prediction")
 
-# 1. Select battery type
+# Select battery type
 battery_types = sorted(set(meta["type"].upper() for meta in BATTERY_METADATA.values()))
 battery_type = st.selectbox("Select battery type:", battery_types)
 
-# 2. List and select CSV file (relative path)
+# List and select CSV file
 folder_path = "../data/processed"
 files = get_files_by_battery_type(battery_type, folder_path)
 if not files:
@@ -95,29 +57,18 @@ if not files:
     st.stop()
 selected_file = st.selectbox("Select test file:", files)
 
-# 3. Load and process data
+# Load and process data
 csv_path = os.path.join(folder_path, selected_file)
 meta = get_file_metadata(selected_file.replace('.csv', ''))
 if not meta:
     st.error("No metadata found for this file.")
     st.stop()
 
-# Debug: Show absolute path for troubleshooting
-st.caption(f"Loading file: {os.path.abspath(csv_path)}")
-if not os.path.exists(csv_path):
-    st.error(f"File does not exist: {csv_path}")
-    st.stop()
-
 df = load_csv(csv_path)
-predictions(df, meta, BATTERY_TYPE_MAPPING[meta["type"]], meta["charged"])
+type_idx = BATTERY_TYPE_MAPPING[meta["type"]]
+ini_charge = meta["charged"]
 
-# 7. Real-time simulation and plotting
-st.subheader("Real-Time Simulation")
-
-dod_plot = st.empty()
-tod_plot = st.empty()
-status_placeholder = st.empty()
-
+# Prepare lists for plotting
 dod_vals = []
 tod_vals = []
 capacity_vals = []
@@ -125,13 +76,45 @@ step_indices = []
 current_vals = []
 voltage_vals = []
 
-for i in range(len(features_df)):
-    dod_vals.append(features_df.loc[i, "DoD"])
-    tod_vals.append(features_df.loc[i, "Final Predicted TOD"] / 3600)  # Convert to hours
-    capacity_vals.append(features_df.loc[i, "Remaining Capacity"])
-    step_indices.append(features_df.loc[i, "Hour"])
-    current_vals.append(features_df.loc[i, "Current"])
-    voltage_vals.append(features_df.loc[i, "Voltage"])
+st.subheader("Real-Time Simulation")
+
+dod_plot = st.empty()
+tod_plot = st.empty()
+status_placeholder = st.empty()
+
+for idx, row in df.iterrows():
+    current = row["Current"]
+    voltage = row["Voltage"]
+
+    # Get predictions for this step
+    pred_df = Predictor.feature_derivator(voltage, current, meta["type"], ini_charge)
+
+    # Extract predicted TOD and CDC from prediction output
+    # pred_df is the output of predict_model2 (final output), assumed to be numpy array or similar
+    # Adjust extraction depending on your model output format
+    if hasattr(pred_df, 'shape') and pred_df.shape[1] >= 2:
+        predicted_TOD = pred_df[0][0]
+        predicted_CDC = pred_df[0][1]
+    else:
+        predicted_TOD = pred_df[0]
+        predicted_CDC = 0
+
+    # Calculate cumulative Ah out and DoD
+    time_step_h = 1 / 60
+    if idx == 0:
+        cumulative_ah = abs(current) * time_step_h
+    else:
+        cumulative_ah += abs(current) * time_step_h
+    remaining_capacity = ini_charge - cumulative_ah
+    dod = (cumulative_ah / ini_charge) * 100 if ini_charge > 0 else 0
+
+    # Append for plotting
+    dod_vals.append(dod)
+    tod_vals.append(predicted_TOD / 3600)  # Convert seconds to hours
+    capacity_vals.append(remaining_capacity)
+    step_indices.append(idx / 60)  # Convert step index to hours
+    current_vals.append(current)
+    voltage_vals.append(voltage)
 
     # Plot DoD
     with dod_plot.container():
@@ -156,14 +139,11 @@ for i in range(len(features_df)):
         st.pyplot(plt.gcf())
         plt.close()
 
-    # Show current battery status
-    rem_time_sec = features_df.loc[i, "Final Predicted TOD"]
-    rem_time_str = format_time(rem_time_sec)
+    # Show status
+    rem_time_str = format_time(predicted_TOD)
     status_placeholder.info(
-        f"Step: {i+1}/{len(features_df)} | "
-        f"Current: {current_vals[-1]:.2f} A | Voltage: {voltage_vals[-1]:.2f} V | "
-        f"Remaining Capacity: {capacity_vals[-1]:.2f} Ah | "
-        f"Predicted Time Remaining: {rem_time_str}"
+        f"Step: {idx+1}/{len(df)} | Current: {current:.2f} A | Voltage: {voltage:.2f} V | "
+        f"Remaining Capacity: {remaining_capacity:.2f} Ah | Predicted Time Remaining: {rem_time_str}"
     )
 
     time.sleep(0.05)  # Simulate real-time update
@@ -172,14 +152,22 @@ st.success("Simulation complete!")
 
 st.subheader("Final Battery Status")
 st.write(f"Final Remaining Capacity: {capacity_vals[-1]:.2f} Ah")
-st.write(f"Final Predicted Time Remaining: {format_time(features_df['Final Predicted TOD'].iloc[-1])}")
+st.write(f"Final Predicted Time Remaining: {format_time(tod_vals[-1]*3600)}")
 st.write(f"Final DoD: {dod_vals[-1]:.2f} %")
 
 st.subheader("Download Results")
-st.dataframe(features_df.tail(10))
+results_df = pd.DataFrame({
+    "Step (hr)": step_indices,
+    "Current (A)": current_vals,
+    "Voltage (V)": voltage_vals,
+    "Remaining Capacity (Ah)": capacity_vals,
+    "Depth of Discharge (%)": dod_vals,
+    "Predicted Time Remaining (s)": [tod*3600 for tod in tod_vals],
+})
+st.dataframe(results_df.tail(10))
 st.download_button(
     label="Download All Predictions as CSV",
-    data=features_df.to_csv(index=False),
+    data=results_df.to_csv(index=False),
     file_name=f"{selected_file.replace('.csv','')}_predictions.csv",
     mime="text/csv"
 )

@@ -1,7 +1,6 @@
 import joblib
 import pandas as pd
 
-
 class prediction():
     def __init__(self):
         self.model1_path = "../Final_codes/battery_random_forest_model1.joblib"
@@ -31,74 +30,60 @@ class prediction():
 
     def predict_model1(self, data):
         Y_pred = self.model1.predict(data)
-        self.predict_model2(Y_pred, data)
+        return self.predict_model2(Y_pred, data)
 
     def predict_model2(self, Y_pred, data):
-        # Battery type encoding mapping
-        type_encoding = {
-            'b1': 0, 'b2': 1, 'b3': 2, 'b5': 3, 'tn1': 4
-        }
+        type_encoding = {'b1': 0, 'b2': 1, 'b3': 2, 'b5': 3, 'tn1': 4}
 
-        pred_TOD = Y_pred[0]
-        pred_CDC = Y_pred[1]
+        # If Y_pred is 2D with 2 columns, assume [TOD, CDC]
+        if Y_pred.ndim == 2 and Y_pred.shape[1] == 2:
+            pred_TOD = Y_pred[:, 0]
+            pred_CDC = Y_pred[:, 1]
+        else:
+            pred_TOD = Y_pred
+            pred_CDC = [0] * len(Y_pred)
+
+        data = data.copy()
         data['predicted TOD'] = pred_TOD
         data['predicted CDC'] = pred_CDC
 
-        # Add encoded battery type
-        if 'type' in data.columns:
+        # Map battery type to encoded int if string
+        if 'type' in data.columns and data['type'].dtype == object:
             data['type'] = data['type'].map(type_encoding)
 
         final_output = self.model2.predict(data)
         return final_output
 
     def feature_derivator(self, voltage, current, battery_type, ini_charge):
-        # Initialize variables
-        time_step = 1  # assuming 1 second intervals
-        ah_out = []
-        power = []
-        remaining_capacity = []
-        discharge_rate = []
-        discharge_ratio = []
-
-        # Get battery capacity from metadata based on type
-        battery_capacity = 0
-        for test in self.metadata.values():
-            if test['type'] == battery_type:
-                battery_capacity = test['capacity']
+        time_step = 1  # seconds
+        # Calculate Ah out for this step (convert seconds to hours)
+        ah_out = (abs(current) * time_step) / 3600
+        # Get battery capacity from metadata
+        battery_capacity = None
+        for meta in self.metadata.values():
+            if meta['type'] == battery_type:
+                battery_capacity = meta['capacity']
                 break
+        if battery_capacity is None:
+            battery_capacity = ini_charge  # fallback
 
-        # Calculate cumulative values
-        current_ah = 0
-
-        # Calculate Ah out (cumulative)
-        current_ah += (abs(current) * time_step) / 3600
-        ah_out = current_ah
-
-        # Calculate power
         power = voltage * current
-
-        # Calculate remaining capacity
-        remaining_capacity = battery_capacity - current_ah
-
-        # Calculate discharge rate
+        remaining_capacity = battery_capacity - ah_out
         discharge_rate = abs(current) / battery_capacity
+        discharge_ratio = ah_out / battery_capacity
 
-        # Calculate discharge ratio
-        discharge_ratio = current_ah / battery_capacity
-
-        # Create DataFrame
+        # Wrap scalars in lists to avoid pandas error
         df = pd.DataFrame({
-            'Voltage': float(voltage),
-            'Current': float(current),
-            'Ah_out': float(ah_out),
-            'Power': float(power),
-            'Remaining_Capacity': float(remaining_capacity),
-            'type': battery_type,
-            'capacity': float(battery_capacity),
-            'charged': float(ini_charge),
-            'Discharge_Rate': float(discharge_rate),
-            'Discharge_Ratio': float(discharge_ratio)
+            'Voltage': [float(voltage)],
+            'Current': [float(current)],
+            'Ah Out': [float(ah_out)],
+            'Power': [float(power)],
+            'Remaining Capacity': [float(remaining_capacity)],
+            'type': [battery_type],
+            'capacity': [float(battery_capacity)],
+            'charged': [float(ini_charge)],
+            'discharge_rate': [float(discharge_rate)],
+            'discharge_ratio': [float(discharge_ratio)]
         })
 
         return self.predict_model1(df)
-

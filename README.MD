@@ -1,12 +1,3 @@
-<img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" class="logo" width="120"/>
-
-# now give me a proper readme now
-
-Absolutely! Here’s a **professional README.md** for your battery life prediction project, covering setup, usage, file descriptions, and troubleshooting.
-You can copy-paste this into your repository’s `README.md`.
-
----
-
 # 🔋 Battery Life Prediction System
 
 Predict remaining battery life (Time to Depletion, TOD) and Depth of Discharge (DoD) for various battery types using machine learning. This project provides real-time simulation, batch processing, and EV-style visualizations for battery discharge cycles.
@@ -27,33 +18,41 @@ Predict remaining battery life (Time to Depletion, TOD) and Depth of Discharge (
 ## 🗂️ Project Structure
 
 ```
-.
+battery-life-predictor/
+├── .venv/                       # Python virtual environment (dependencies, do not edit)
 ├── data/
-│   └── processed/                 # Processed battery test CSVs (input)
+│   └── processed/               # Processed battery test CSVs (input for prediction)
 ├── models/
 │   ├── battery_random_forest_model1.joblib
 │   └── battery_random_forest_model2.joblib
-├── predictions/                   # Output CSVs and plots (auto-generated)
-├── Predict.py                     # Prediction pipeline (core logic)
-├── battery_gauge_app.py           # Streamlit app for simulation & visualization
-├── batch_simulation.py            # Batch simulation for all test files
-├── process_battery_sheets.py      # Raw data cleaning (optional)
-├── Preprocessing-and-Training-PT2.py, preprocessor.ipynb # Feature engineering & training
-├── Random-Forest1.ipynb           # Model 1 training
-├── Random-Forest2.ipynb           # Model 2 training
-└── README.md                      # This file
+├── predictions/                 # Output: prediction CSVs and PNG plots for each test
+├── Predict.py                   # Core prediction pipeline (feature engineering, ML models)
+├── battery_gauge_app.py         # Streamlit app for interactive simulation and visualization
+├── batch_simulation.py          # Script for batch prediction and result saving for all tests
+├── process_battery_sheets.py    # (Optional) Raw data cleaning and initial processing
+├── Preprocessing-and-Training-PT2.py
+├── preprocessor.ipynb           # Feature engineering and dataset creation
+├── Random-Forest1.ipynb         # Model 1 (Random Forest) training
+├── Random-Forest2.ipynb         # Model 2 (Random Forest) training
+└── README.md                    # Project documentation (this file)
 ```
 
+**Notes:**
 
----
+- All code is in the project root.
+- Input data is in `data/processed/`.
+- Model files are in `models/`.
+- All outputs (predictions and plots) are saved in `predictions/`.
+- The `.venv/` folder contains your Python environment and can be ignored for code/data purposes.
+
+
 
 ## ⚙️ Setup
 
 1. **Clone this repository**
 
 ```bash
-git clone <your-repo-url>
-cd <your-repo>
+git clone https://github.com/DarSahran/battery-life-predictor.git
 ```
 
 2. **Install dependencies**
@@ -144,25 +143,3 @@ For each battery, you will get:
 - **Remaining Capacity (Ah) vs Predicted Time Remaining (hours):**
 
 ---
-
-## 📃 License
-
-MIT License (or specify your own).
-
----
-
-## 👤 Authors
-
-- [Your Name]
-- [Collaborators]
-
----
-
-## 📬 Contact
-
-For questions or support, open an issue or contact [your.email@example.com](mailto:your.email@example.com).
-
----
-
-**Enjoy accurate, real-time battery life prediction and analysis!**
-

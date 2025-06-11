@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import Predict
 
 Predictor = Predict.prediction()
+Predicted_TOD_CDC = []
 
 # --- Model paths (relative) ---
 MODEL1_PATH = "../Final_codes/battery_random_forest_model1.joblib"
@@ -55,8 +56,7 @@ def predictions(df, meta, type, ini_charge):
     for idx, row in df.iterrows():
         current = row["Current"]
         voltage = row["Voltage"]
-        Predictor.feature_derivator(voltage, current, type, ini_charge)
-
+        Predicted_TOD_CDC.append(Predictor.feature_derivator(voltage, current, type, ini_charge))
 
 
 def format_time(seconds):
@@ -110,8 +110,6 @@ if not os.path.exists(csv_path):
 
 df = load_csv(csv_path)
 predictions(df, meta, BATTERY_TYPE_MAPPING[meta["type"]], meta["charged"])
-
-
 
 # 7. Real-time simulation and plotting
 st.subheader("Real-Time Simulation")

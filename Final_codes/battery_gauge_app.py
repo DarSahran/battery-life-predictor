@@ -5,6 +5,9 @@ import numpy as np
 import streamlit as st
 import joblib
 import matplotlib.pyplot as plt
+import Predict
+
+Predictor = Predict.prediction()
 
 # --- Model paths (relative) ---
 MODEL1_PATH = "../Final_codes/battery_random_forest_model1.joblib"

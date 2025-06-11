@@ -1,276 +1,225 @@
-import streamlit as st
-import numpy as np
-import pandas as pd
-from datetime import datetime, timedelta
-import time
-import joblib
 import os
+import time
+import pandas as pd
+import numpy as np
+import streamlit as st
+import joblib
+import matplotlib.pyplot as plt
 
+# --- Model paths (relative) ---
+MODEL1_PATH = "../Final_codes/battery_random_forest_model1.joblib"
+MODEL2_PATH = "../Final_codes/battery_random_forest_model2.joblib"
 
-# Set page configuration
-st.set_page_config(layout="wide", page_title="Battery Life Predictor", page_icon="🔋")
-
-# --- Constants and Model Loading ---
-
-# Paths to pre-trained models
-MODEL1_PATH = 'battery_random_forest_model1.joblib'
-MODEL2_PATH = 'battery_random_forest_model2.joblib'
-
-# Simulation parameters from BatteryDepletionPredictionModel
-SIM_INTERVAL_MINUTES = 5
-DEGRADATION_RATE_PER_INTERVAL = 0.0001
-MAX_OPERATIONAL_VOLTAGE = 12.8
-MIN_OPERATIONAL_VOLTAGE = 9.0
-MAX_SIMULATED_CURRENT = 15.0
-
-# Battery specifications
-BATTERY_SPECS = {
-    "TN1": {"nominal_capacity": 85.0, "charged_capacity": 80.0, "nominal_voltage": 12.6},
-    "B1": {"nominal_capacity": 81.28, "charged_capacity": 81.28, "nominal_voltage": 12.6},
-    "B2": {"nominal_capacity": 85.0, "charged_capacity": 85.0, "nominal_voltage": 12.6},
-    "B3": {"nominal_capacity": 88.35, "charged_capacity": 88.35, "nominal_voltage": 12.6},
-    "B5": {"nominal_capacity": 85.0, "charged_capacity": 85.0, "nominal_voltage": 12.6}
+# --- Battery metadata (from paste.txt) ---
+BATTERY_METADATA = {
+    "TEST_1_processed": {"capacity": 85, "charged": 85, "type": "b5"},
+    "TEST_2_processed": {"capacity": 81.28, "charged": 81.28, "type": "b1"},
+    "TEST_3_processed": {"capacity": 85, "charged": 85, "type": "b5"},
+    "TEST_4_processed": {"capacity": 85, "charged": 85, "type": "b2"},
+    "TEST_5_processed": {"capacity": 88.81, "charged": 88.81, "type": "b2"},
+    "TEST_6_processed": {"capacity": 81.84, "charged": 81.84, "type": "b1"},
+    "TEST_7_processed": {"capacity": 81.84, "charged": 36, "type": "b1"},
+    "TEST_8_processed": {"capacity": 88.81, "charged": 27, "type": "b2"},
+    "TEST_9_processed": {"capacity": 85, "charged": 80, "type": "tn1"},
+    "TEST_10_processed": {"capacity": 85, "charged": 54, "type": "tn1"},
+    "TEST_11_processed": {"capacity": 85, "charged": 85, "type": "b5"},
+    "TEST_12_processed": {"capacity": 85, "charged": 67, "type": "b5"},
+    "TEST_13_processed": {"capacity": 85, "charged": 85, "type": "b5"},
+    "TEST_14_processed": {"capacity": 88.83, "charged": 52, "type": "b3"},
+    "TEST_15_processed": {"capacity": 88.35, "charged": 70, "type": "b3"},
+    "TEST_16_processed": {"capacity": 88.35, "charged": 61, "type": "b3"},
+    "TEST_17_processed": {"capacity": 88.35, "charged": 88.35, "type": "b3"},
 }
-# Map battery codes to an index for the model
-BATTERY_TYPE_MAPPING = {key: i for i, key in enumerate(BATTERY_SPECS.keys())}
+BATTERY_TYPE_MAPPING = {'tn1': 0, 'b1': 1, 'b2': 2, 'b3': 3, 'b5': 4}
 
+def get_file_metadata(filename):
+    key = filename.replace('.csv', '')
+    return BATTERY_METADATA.get(key, None)
 
-@st.cache_resource
-def load_models():
-    """Load the pre-trained models."""
-    if not os.path.exists(MODEL1_PATH) or not os.path.exists(MODEL2_PATH):
-        st.error(f"Model files not found. Make sure '{MODEL1_PATH}' and '{MODEL2_PATH}' are in the same directory.")
-        return None, None
-    try:
-        model1_obj = joblib.load(MODEL1_PATH)
-        model2_obj = joblib.load(MODEL2_PATH)
+def get_files_by_battery_type(battery_type, folder_path):
+    files = []
+    for fname, meta in BATTERY_METADATA.items():
+        if meta["type"].lower() == battery_type.lower():
+            full_path = os.path.join(folder_path, fname + ".csv")
+            if os.path.exists(full_path):
+                files.append(fname + ".csv")
+    return files
 
-        # Handle case where joblib.load returns a tuple (e.g., model and scaler)
-        model1 = model1_obj[0] if isinstance(model1_obj, tuple) else model1_obj
-        model2 = model2_obj[0] if isinstance(model2_obj, tuple) else model2_obj
-        
-        return model1, model2
-    except Exception as e:
-        st.error(f"Error loading models: {e}")
-        return None, None
-
-model1, model2 = load_models()
-
-
-class BatterySimulator:
-    def __init__(self, battery_type, initial_charge):
-        self.battery_type = battery_type
-        self.specs = BATTERY_SPECS[battery_type]
-        self.nominal_capacity = self.specs["nominal_capacity"]
-        
-        self.current_capacity_ah = initial_charge
-        self.time_elapsed_hours = 0
-        self.step = 0
-        
-        # Initialize state variables based on the logic from the provided file
-        self.battery_type_index = BATTERY_TYPE_MAPPING[battery_type]
-        self.time_step_secs = SIM_INTERVAL_MINUTES * 60
-        self.cumulative_ah_total = 0
-        self.data_buffer = []
-
-    def simulate_discharge_step(self):
-        """Simulate one time step of battery discharge using the loaded models."""
-        if self.current_capacity_ah <= 0 or model1 is None or model2 is None:
-            return None
-
-        # --- This logic is adapted from your provided simulation file ---
-        
-        # 1. Calculate current telemetry
-        soc = self.current_capacity_ah / self.nominal_capacity if self.nominal_capacity > 0 else 0
-        degradation_factor = 1 - (self.step * DEGRADATION_RATE_PER_INTERVAL)
-        
-        base_current = 8 + 7 * soc + np.random.normal(0, 0.5)
-        current = max(0.5, min(MAX_SIMULATED_CURRENT, base_current))
-        
-        voltage = MIN_OPERATIONAL_VOLTAGE + (MAX_OPERATIONAL_VOLTAGE - MIN_OPERATIONAL_VOLTAGE) * soc * degradation_factor
-        voltage += np.random.normal(0, 0.05)
-        voltage = max(MIN_OPERATIONAL_VOLTAGE, min(MAX_OPERATIONAL_VOLTAGE, voltage))
-
-        ah_out = (current * self.time_step_secs) / 3600
-        self.cumulative_ah_total += ah_out
+def derive_features(df, meta):
+    time_step_h = 1 / 60  # 1 min per row
+    cumulative_ah = 0.0
+    results = []
+    for idx, row in df.iterrows():
+        current = row["Current"]
+        voltage = row["Voltage"]
+        ah_out = current * time_step_h
+        cumulative_ah += ah_out
+        remaining_capacity = meta["charged"] - cumulative_ah
         power = voltage * current
-        
-        self.current_capacity_ah = max(0, self.current_capacity_ah - ah_out)
-        percent_remaining = (self.current_capacity_ah / self.nominal_capacity) * 100 if self.nominal_capacity > 0 else 0
-        
-        # 2. Prepare data for Model 1 - with corrected column names and features
-        discharge_rate = current / self.nominal_capacity if self.nominal_capacity > 0 else 0
-        discharge_ratio = self.cumulative_ah_total / self.nominal_capacity if self.nominal_capacity > 0 else 0
-
-        base_row = {
-            'step_index': self.step,
-            'type': self.battery_type_index,
-            'Current': current,
-            'Voltage': voltage,
-            'Ah Out': ah_out,
-            'Cumulative Actual Disch Ah': self.cumulative_ah_total,
-            'Power': power,
-            'Remaining Capacity': percent_remaining,
-            'charged': self.current_capacity_ah,
-            'capacity': self.nominal_capacity,
-            'discharge_rate': discharge_rate,
-            'discharge_ratio': discharge_ratio
+        discharge_rate = current / (voltage + 1e-6)
+        discharge_ratio = ah_out / (meta["charged"] + 1e-6)
+        dod = (cumulative_ah / meta["charged"]) * 100  # Depth of Discharge in %
+        step_data = {
+            "type": BATTERY_TYPE_MAPPING[meta["type"].lower()],
+            "Current": current,
+            "Voltage": voltage,
+            "Ah Out": ah_out,
+            "Power": power,
+            "Remaining Capacity": remaining_capacity,
+            "capacity": meta["capacity"],
+            "charged": meta["charged"],
+            "discharge_rate": discharge_rate,
+            "discharge_ratio": discharge_ratio,
+            "step_index": idx,
+            "DoD": dod,
+            "Hour": idx / 60  # Each step is 1 min
         }
-        
-        X_input_df = pd.DataFrame([base_row])
-        for i in range(1, 5):
-            if len(self.data_buffer) >= i:
-                past_data = self.data_buffer[-i]
-                X_input_df[f'Current_t-{i}'] = past_data['Current']
-                X_input_df[f'Voltage_t-{i}'] = past_data['Voltage']
-            else:
-                X_input_df[f'Current_t-{i}'] = current
-                X_input_df[f'Voltage_t-{i}'] = voltage
-        
-        # 3. Predict with Model 1
-        pred_model1 = model1.predict(X_input_df)
-        predicted_voltage_next_step = pred_model1[0]
-        
-        # 4. Prepare data for Model 2
-        X_input_df_for_model2 = X_input_df.copy()
-        X_input_df_for_model2['Predicted_Voltage_next_step'] = predicted_voltage_next_step
+        results.append(step_data)
+    return pd.DataFrame(results)
 
-        # 5. Predict with Model 2
-        y_pred_model2 = model2.predict(X_input_df_for_model2)
-        time_remaining_seconds = y_pred_model2[0]
-        time_remaining_hours = max(0, time_remaining_seconds / 3600)
-        
-        # Update state for next step
-        self.time_elapsed_hours += (self.time_step_secs / 3600)
-        self.step += 1
-        self.data_buffer.append(base_row)
-        if len(self.data_buffer) > 5:
-            self.data_buffer.pop(0)
-
-        # 6. Return results
-        return {
-            'time_elapsed': self.time_elapsed_hours, 'current': current, 'voltage': voltage,
-            'power': power, 'ah_remaining': self.current_capacity_ah,
-            'percent_remaining': percent_remaining, 'soc': soc,
-            'time_remaining': time_remaining_hours
-        }
-
-# Initialize session state
-if 'simulation_data' not in st.session_state:
-    st.session_state.simulation_data = []
-if 'is_running' not in st.session_state:
-    st.session_state.is_running = False
-if 'simulator' not in st.session_state:
-    st.session_state.simulator = None
-
-# --- UI Layout ---
-st.title("🔋 EV Battery Life Predictor")
-st.markdown("**Real-time battery discharge simulation with ML-powered time remaining predictions**")
-
-st.sidebar.header("Battery Configuration")
-selected_battery = st.sidebar.selectbox("Select Battery Type:", list(BATTERY_SPECS.keys()), key="sb_battery")
-battery_info = BATTERY_SPECS[selected_battery]
-initial_charge = st.sidebar.slider("Initial Charge (Ah):", min_value=5.0, max_value=battery_info["charged_capacity"], value=battery_info["charged_capacity"], step=0.5, key="sl_charge")
-st.sidebar.markdown("---")
-simulation_speed = st.sidebar.slider("Simulation Speed (updates/sec):", 1, 10, 5, key="sl_speed")
-
-models_loaded = model1 is not None and model2 is not None
-
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    st.header("Live Battery Telemetry")
-    plot_placeholder = st.empty()
-
-with col2:
-    st.header("Battery Status")
-    b_col1, b_col2, b_col3 = st.columns(3)
-    if b_col1.button("▶️ Start", use_container_width=True, disabled=not models_loaded):
-        st.session_state.is_running = True
-        st.session_state.simulation_data = []
-        st.session_state.simulator = BatterySimulator(selected_battery, initial_charge)
-        st.rerun()
-    if b_col2.button("⏸️ Stop", use_container_width=True):
-        st.session_state.is_running = False
-    if b_col3.button("🔄 Reset", use_container_width=True):
-        st.session_state.is_running = False
-        st.session_state.simulator = None
-        st.session_state.simulation_data = []
-        st.rerun()
-
-    st.markdown("---")
-    capacity_placeholder = st.empty()
-    current_placeholder = st.empty()
-    voltage_placeholder = st.empty()
-    time_rem_placeholder = st.empty()
-    time_ela_placeholder = st.empty()
-
-# --- Main Simulation Loop ---
-if st.session_state.is_running and models_loaded:
-    simulator = st.session_state.simulator
-    while st.session_state.is_running:
-        if simulator:
-            data_point = simulator.simulate_discharge_step()
-            if data_point:
-                st.session_state.simulation_data.append(data_point)
-                
-                capacity_placeholder.metric("🔋 Remaining Capacity", f"{data_point['percent_remaining']:.1f}%")
-                current_placeholder.metric("⚡ Current", f"{data_point['current']:.1f} A")
-                voltage_placeholder.metric("🔌 Voltage", f"{data_point['voltage']:.1f} V")
-                time_rem_placeholder.metric("⏱️ Time Remaining", f"{data_point['time_remaining']:.1f} hours")
-                time_ela_placeholder.metric("🕐 Time Elapsed", f"{data_point['time_elapsed']:.1f} hours")
-                
-                df_plot = pd.DataFrame(st.session_state.simulation_data)
-                chart_data = df_plot.rename(columns={
-                    'time_elapsed': 'Time Elapsed (h)',
-                    'time_remaining': 'Predicted Time Remaining (h)',
-                    'percent_remaining': 'Battery Capacity (%)'
-                }).set_index('Time Elapsed (h)')
-                
-                plot_placeholder.line_chart(chart_data[['Predicted Time Remaining (h)', 'Battery Capacity (%)']])
-                
-                time.sleep(1 / simulation_speed)
-            else:
-                st.session_state.is_running = False
-                st.toast("🎉 Battery simulation completed!")
-        else:
-            st.session_state.is_running = False
-    st.rerun()
-
-# --- Display Final State ---
-else:
-    if not models_loaded:
-        st.warning("Prediction models are not loaded. Cannot start simulation.")
-
-    if st.session_state.simulation_data:
-        last_data = st.session_state.simulation_data[-1]
-        capacity_placeholder.metric("🔋 Remaining Capacity", f"{last_data['percent_remaining']:.1f}%")
-        current_placeholder.metric("⚡ Current", f"{last_data['current']:.1f} A")
-        voltage_placeholder.metric("🔌 Voltage", f"{last_data['voltage']:.1f} V")
-        time_rem_placeholder.metric("⏱️ Time Remaining", f"{last_data.get('time_remaining', 0):.1f} hours")
-        time_ela_placeholder.metric("🕐 Time Elapsed", f"{last_data['time_elapsed']:.1f} hours")
-        
-        df_plot = pd.DataFrame(st.session_state.simulation_data)
-        chart_data = df_plot.rename(columns={
-            'time_elapsed': 'Time Elapsed (h)',
-            'time_remaining': 'Predicted Time Remaining (h)',
-            'percent_remaining': 'Battery Capacity (%)'
-        }).set_index('Time Elapsed (h)')
-        plot_placeholder.line_chart(chart_data[['Predicted Time Remaining (h)', 'Battery Capacity (%)']])
+def format_time(seconds):
+    if seconds < 60:
+        return f"{int(seconds)} seconds"
+    elif seconds < 3600:
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes} min {secs} sec"
     else:
-        plot_placeholder.info("Configure battery and start the simulation to see live telemetry.")
-        capacity_placeholder.metric("🔋 Remaining Capacity", "N/A")
-        current_placeholder.metric("⚡ Current", "N/A")
-        voltage_placeholder.metric("🔌 Voltage", "N/A")
-        time_rem_placeholder.metric("⏱️ Time Remaining", "N/A")
-        time_ela_placeholder.metric("🕐 Time Elapsed", "N/A")
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        return f"{hours} hr {minutes} min"
 
-if st.session_state.simulation_data:
-    st.header("Simulation Data")
-    df_display = pd.DataFrame(st.session_state.simulation_data)[['time_elapsed', 'percent_remaining', 'current', 'voltage', 'time_remaining']].round(2)
-    df_display.columns = ['Time Elapsed (h)', 'Battery (%)', 'Current (A)', 'Voltage (V)', 'Time Remaining (h)']
-    st.dataframe(df_display.tail(10))
+@st.cache_data
+def load_model(path):
+    return joblib.load(path)
 
-st.markdown("---")
-st.header("ℹ️ About This Application")
-st.markdown("**Features:**\n- **Realistic Battery Simulation**: Models actual Li-ion battery discharge characteristics.\n- **Machine Learning Predictions**: Uses two pre-trained Random Forest models to predict voltage and remaining battery life.\n- **EV-Style Visualization**: Professional battery gauge similar to electric vehicle displays.\n- **Real-time Updates**: Live simulation with configurable update rates.\n- **Multiple Battery Types**: Support for different battery specifications.")
+@st.cache_data
+def load_csv(path):
+    return pd.read_csv(path)
+
+# --- Streamlit UI ---
+st.set_page_config(page_title="Battery Life Real-Time Simulation & Prediction", page_icon="🔋")
+st.title("🔋 Battery Life Real-Time Simulation & Prediction")
+
+# 1. Select battery type
+battery_types = sorted(set(meta["type"].upper() for meta in BATTERY_METADATA.values()))
+battery_type = st.selectbox("Select battery type:", battery_types)
+
+# 2. List and select CSV file (relative path)
+folder_path = "../data/processed"
+files = get_files_by_battery_type(battery_type, folder_path)
+if not files:
+    st.error("No files found for this battery type.")
+    st.stop()
+selected_file = st.selectbox("Select test file:", files)
+
+# 3. Load and process data
+csv_path = os.path.join(folder_path, selected_file)
+meta = get_file_metadata(selected_file.replace('.csv', ''))
+if not meta:
+    st.error("No metadata found for this file.")
+    st.stop()
+
+# Debug: Show absolute path for troubleshooting
+st.caption(f"Loading file: {os.path.abspath(csv_path)}")
+if not os.path.exists(csv_path):
+    st.error(f"File does not exist: {csv_path}")
+    st.stop()
+
+df = load_csv(csv_path)
+features_df = derive_features(df, meta)
+
+# 4. Load models (relative paths)
+model1 = load_model(MODEL1_PATH)
+model2 = load_model(MODEL2_PATH)
+
+# 5. Model 1 prediction
+pred1 = model1.predict(features_df)
+if pred1.ndim == 2 and pred1.shape[1] == 2:
+    features_df['predicted TOD'] = pred1[:, 0]
+    features_df['predicted CDC'] = pred1[:, 1]
+else:
+    features_df['predicted TOD'] = pred1
+    features_df['predicted CDC'] = 0
+
+# 6. Model 2 prediction
+final_pred = model2.predict(features_df)
+if final_pred.ndim == 2 and final_pred.shape[1] == 2:
+    features_df['Final Predicted TOD'] = final_pred[:, 0]
+    features_df['Final Predicted CDC'] = final_pred[:, 1]
+else:
+    features_df['Final Predicted TOD'] = final_pred
+    features_df['Final Predicted CDC'] = np.zeros_like(final_pred)
+
+# 7. Real-time simulation and plotting
+st.subheader("Real-Time Simulation")
+
+dod_plot = st.empty()
+tod_plot = st.empty()
+status_placeholder = st.empty()
+
+dod_vals = []
+tod_vals = []
+capacity_vals = []
+step_indices = []
+current_vals = []
+voltage_vals = []
+
+for i in range(len(features_df)):
+    dod_vals.append(features_df.loc[i, "DoD"])
+    tod_vals.append(features_df.loc[i, "Final Predicted TOD"] / 3600)  # Convert to hours
+    capacity_vals.append(features_df.loc[i, "Remaining Capacity"])
+    step_indices.append(features_df.loc[i, "Hour"])
+    current_vals.append(features_df.loc[i, "Current"])
+    voltage_vals.append(features_df.loc[i, "Voltage"])
+
+    # Plot DoD
+    with dod_plot.container():
+        plt.figure(figsize=(8, 3))
+        plt.plot(step_indices, dod_vals, color='blue')
+        plt.xlabel("Time (hours)")
+        plt.ylabel("Depth of Discharge (%)")
+        plt.ylim(0, 100)
+        plt.title("Depth of Discharge (DoD) Over Time")
+        plt.grid(True)
+        st.pyplot(plt.gcf())
+        plt.close()
+
+    # Plot Time Remaining (TOD)
+    with tod_plot.container():
+        plt.figure(figsize=(8, 3))
+        plt.plot(step_indices, tod_vals, color='red')
+        plt.xlabel("Time (hours)")
+        plt.ylabel("Predicted Time Remaining (hours)")
+        plt.title("Predicted Time Remaining Over Time")
+        plt.grid(True)
+        st.pyplot(plt.gcf())
+        plt.close()
+
+    # Show current battery status
+    rem_time_sec = features_df.loc[i, "Final Predicted TOD"]
+    rem_time_str = format_time(rem_time_sec)
+    status_placeholder.info(
+        f"Step: {i+1}/{len(features_df)} | "
+        f"Current: {current_vals[-1]:.2f} A | Voltage: {voltage_vals[-1]:.2f} V | "
+        f"Remaining Capacity: {capacity_vals[-1]:.2f} Ah | "
+        f"Predicted Time Remaining: {rem_time_str}"
+    )
+
+    time.sleep(0.05)  # Simulate real-time update
+
+st.success("Simulation complete!")
+
+st.subheader("Final Battery Status")
+st.write(f"Final Remaining Capacity: {capacity_vals[-1]:.2f} Ah")
+st.write(f"Final Predicted Time Remaining: {format_time(features_df['Final Predicted TOD'].iloc[-1])}")
+st.write(f"Final DoD: {dod_vals[-1]:.2f} %")
+
+st.subheader("Download Results")
+st.dataframe(features_df.tail(10))
+st.download_button(
+    label="Download All Predictions as CSV",
+    data=features_df.to_csv(index=False),
+    file_name=f"{selected_file.replace('.csv','')}_predictions.csv",
+    mime="text/csv"
+)

@@ -65,7 +65,6 @@ class preprocessing():
 
         DATASET["discharge_rate"] = DATASET["Current"] / (DATASET["Voltage"] + 1e-6)
         DATASET["discharge_ratio"] = DATASET["Ah Out"] / (DATASET["charged"] + 1e-6)
-        DATASET["step_index"] = DATASET.groupby('type').cumcount()
 
         
         with open("../Final_codes/DATASET.csv", "w") as f:

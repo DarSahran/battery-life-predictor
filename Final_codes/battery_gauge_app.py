@@ -21,12 +21,8 @@ def format_time(seconds):
     else:
         return f"{seconds//3600} hr {((seconds%3600)//60)} min"
 
-def apply_smoothing(x, window=10, method="Moving Average"):
-    if method == "Moving Average":
-        return pd.Series(x).rolling(window=window, min_periods=1).mean().values
-    elif method == "Exponential":
-        return pd.Series(x).ewm(span=window, adjust=False).mean().values
-    return x
+def apply_smoothing(x, window=10):
+    return pd.Series(x).rolling(window=window, min_periods=1).mean().values
 
 st.set_page_config(page_title="Battery Life Real-Time Simulation & Prediction", page_icon="🔋")
 st.title("🔋 Battery Life Real-Time Simulation & Prediction")
@@ -65,13 +61,12 @@ if stop:
 dod_vals, tod_vals, capacity_vals, step_indices, current_vals, voltage_vals = [], [], [], [], [], []
 
 dod_plot = st.empty()
-tod_plot = st.empty()
+ev_plot = st.empty()
 status_placeholder = st.empty()
 
 # --- Simulation Loop ---
 if st.session_state.running:
     for idx, row in df.iterrows():
-        # Use the CSV's own columns for features
         features = pd.DataFrame({
             'Current': [row['Current']],
             'Voltage': [row['Voltage']],
@@ -92,18 +87,20 @@ if st.session_state.running:
             predicted_TOD = pred[0]
 
         dod = 100 * (meta['charged'] - row['Remaining Capacity']) / meta['charged']
+        capacity_percent = 100 * row['Remaining Capacity'] / meta['charged']
         dod_vals.append(dod)
-        tod_vals.append(predicted_TOD / 3600)
-        capacity_vals.append(row['Remaining Capacity'])
+        tod_vals.append(predicted_TOD / 3600)  # in hours
+        capacity_vals.append(capacity_percent)
         step_indices.append(idx / 60)
         current_vals.append(row['Current'])
         voltage_vals.append(row['Voltage'])
 
-        # Apply smoothing to DoD and TOD (always on, moving average, window=10)
-        smooth_dod_vals = apply_smoothing(dod_vals, window=10, method="Moving Average")
-        smooth_tod_vals = apply_smoothing(tod_vals, window=10, method="Moving Average")
+        # Smoothing (window=10)
+        smooth_dod_vals = apply_smoothing(dod_vals, window=10)
+        smooth_tod_vals = apply_smoothing(tod_vals, window=10)
+        smooth_capacity_vals = apply_smoothing(capacity_vals, window=10)
 
-        # Plot DoD
+        # Plot 1: DoD vs Time
         with dod_plot.container():
             plt.figure(figsize=(8, 3))
             plt.plot(step_indices, dod_vals, color='blue', alpha=0.3, label="Raw")
@@ -117,17 +114,20 @@ if st.session_state.running:
             st.pyplot(plt.gcf())
             plt.close()
 
-        # Plot Time Remaining (TOD)
-        with tod_plot.container():
-            plt.figure(figsize=(8, 3))
-            plt.plot(step_indices, tod_vals, color='red', alpha=0.3, label="Raw")
-            plt.plot(step_indices, smooth_tod_vals, color='red', linewidth=2, label="Smoothed")
-            plt.xlabel("Time (hours)")
-            plt.ylabel("Predicted Time Remaining (hours)")
-            plt.title("Predicted Time Remaining Over Time")
-            plt.grid(True)
-            plt.legend()
-            st.pyplot(plt.gcf())
+        # Plot 2: Battery Capacity (%) vs Predicted Time Remaining (Hours)
+        with ev_plot.container():
+            fig, ax = plt.subplots(figsize=(12, 6))
+            ax.plot(smooth_tod_vals, smooth_capacity_vals, marker='o')
+            for i, (x, y) in enumerate(zip(smooth_tod_vals, smooth_capacity_vals)):
+                if i % 5 == 0 or i == len(smooth_tod_vals)-1:
+                    ax.annotate(f"{y:.1f}%", (x, y), textcoords="offset points", xytext=(0,5), ha='center', fontsize=8)
+            ax.set_xlabel("Predicted Time Remaining (Hours)")
+            ax.set_ylabel("Battery Capacity (%)")
+            ax.set_title(f"EV-Style Battery Display - {meta['type'].upper()} (Charged: {meta['charged']}Ah)")
+            ax.set_ylim(0, 100)
+            ax.invert_xaxis()  # Optional: time remaining decreases left-to-right
+            ax.grid(True)
+            st.pyplot(fig)
             plt.close()
 
         rem_time_sec = predicted_TOD
@@ -144,7 +144,7 @@ if st.session_state.running:
     st.success("Simulation complete!")
 
     st.subheader("Final Battery Status")
-    st.write(f"Final Remaining Capacity: {capacity_vals[-1]:.2f} Ah")
+    st.write(f"Final Remaining Capacity: {100*df.iloc[-1]['Remaining Capacity']/meta['charged']:.2f} %")
     st.write(f"Final Predicted Time Remaining: {format_time(tod_vals[-1]*3600)}")
     st.write(f"Final DoD: {dod_vals[-1]:.2f} %")
 
@@ -153,9 +153,9 @@ if st.session_state.running:
         "Step (hr)": step_indices,
         "Current (A)": current_vals,
         "Voltage (V)": voltage_vals,
-        "Remaining Capacity (Ah)": capacity_vals,
+        "Remaining Capacity (%)": capacity_vals,
         "Depth of Discharge (%)": dod_vals,
-        "Predicted Time Remaining (s)": [tod*3600 for tod in tod_vals],
+        "Predicted Time Remaining (hr)": tod_vals,
     })
     st.dataframe(results_df.tail(10))
     st.download_button(

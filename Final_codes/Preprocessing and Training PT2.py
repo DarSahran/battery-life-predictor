@@ -1,16 +1,18 @@
 import pandas as pd
 import numpy as np
+from fontTools.tfmLib import PASSTHROUGH
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.impute import SimpleImputer # Import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import mean_absolute_error
 import joblib
 import os
 import matplotlib
 import threading
 from sklearn.inspection import permutation_importance
+from sklearn.metrics import mean_absolute_error
 
 
 class preprocessing():
@@ -72,12 +74,20 @@ class preprocessing():
 
 
     def preprocessing2(self):
-        data = pd.read_csv("../Final_codes/DATASET.csv")
+        dataset = pd.read_csv("../Final_codes/DATASET.csv")
+        data = dataset.copy()
+        data = data.drop(['Cumulative Actual Disch Ah', 'Time to Depletion'], axis=1)
         
         model = joblib.load("../Final_codes/battery_random_forest_model1.joblib")
 
-        for _, i in data.iterrows():
-            x = pd.DataFrame(i).T
+        categorical_features = data.select_dtypes(include=['object', 'category']).columns.tolist()
+        categorical_imputer = SimpleImputer(strategy='constant', fill_value='missing')
+        for col in categorical_features:
+            data[col] = categorical_imputer.fit_transform(data[[col]]).ravel()
+
+        for col in categorical_features:
+            le = LabelEncoder()
+            data[col] = le.fit_transform(data[col].astype(str))
 
         pred1 = {}
         pred2 = {}
@@ -110,11 +120,11 @@ class preprocessing():
         t5.join()
         t6.join()
 
-        data['predicted TOD'] = pred1
-        data['predicted CDC'] = pred2
+        dataset['predicted TOD'] = pred1
+        dataset['predicted CDC'] = pred2
         with open("../Final_codes/DATASET2.csv", "w") as f:
             f.write(
-                data.to_csv(index=False)
+                dataset.to_csv(index=False)
             )
 
 
@@ -125,10 +135,15 @@ class training():
 
         data = pd.read_csv("../Final_codes/DATASET.csv")
 
-        data.head()
-
         Y = data[TARGET_VARIABLE]
         X = data.drop(TARGET_VARIABLE, axis=1)
+
+        print("NaN locations (before imputation):")
+        for column in data.columns:
+            if data[column].isna().any():
+                print(f"\n{column}:")
+                print(data[data[column].isna()].index)
+
 
         numerical_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
         categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
@@ -136,29 +151,29 @@ class training():
         print("Numerical Featrures are : ", numerical_features)
         print("Categorical Featrures are : ", categorical_features)
 
-        print("NaN locations:")
-        for column in data.columns:
-            if data[column].isna().any():
-                print(f"\n{column}:")
-                print(data[data[column].isna()].index)
-
         X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.15, random_state=42)
 
+        numerical_imputer = SimpleImputer(strategy='mean')
+        X_train[numerical_features] = numerical_imputer.fit_transform(X_train[numerical_features])
+        X_test[numerical_features] = numerical_imputer.transform(X_test[numerical_features])
+
+        categorical_imputer = SimpleImputer(strategy='constant', fill_value='missing')
+        for col in categorical_features:
+            X_train[col] = categorical_imputer.fit_transform(X_train[[col]]).ravel()
+            X_test[col] = categorical_imputer.transform(X_test[[col]]).ravel()
+
+        for col in categorical_features:
+            le = LabelEncoder()
+            X_train[col] = le.fit_transform(X_train[col].astype(str))
+            X_test[col] = le.transform(X_test[col].astype(str))
+
         numerical_transformer = Pipeline(steps=[
-            ('pass',
-             'passthrough')
-        ])
-        categorical_transformer = Pipeline(steps=[
-            ('onehot',
-             OneHotEncoder(handle_unknown='ignore',
-                           sparse_output=False))
+            ('pass', 'passthrough') # You might want to scale numerical features
         ])
 
         preprocessor = ColumnTransformer(transformers=[
-            ('num', numerical_transformer, numerical_features),
-            ('cat', categorical_transformer, categorical_features)
-        ]
-            , remainder='passthrough')
+            ('num', numerical_transformer, numerical_features)
+        ], remainder='passthrough')
 
         rf_model = RandomForestRegressor(
             random_state=42,
@@ -179,13 +194,10 @@ class training():
         print("Initiating training ...")
         pipeline.fit(X_train, Y_train)
 
-        # Corrected line: Use pipeline.predict(X_test)
         Y_pred = pipeline.predict(X_test)
         mae = mean_absolute_error(Y_test, Y_pred)
         print(f"Mean Absolute Error is : {mae:.2f}")
 
-        # You should also dump the entire pipeline, not just the rf_model,
-        # so that the preprocessor is also saved for future predictions.
         joblib.dump(pipeline, "../Final_codes/battery_random_forest_model1.joblib")
 
 
@@ -193,8 +205,6 @@ class training():
         TARGET_VARIABLE = ['Time to Depletion','Cumulative Actual Disch Ah']
         
         data = pd.read_csv("../Final_codes/DATASET2.csv")
-        
-        data.head()
         
         Y = data[TARGET_VARIABLE]
         X = data.drop(TARGET_VARIABLE, axis=1)
@@ -205,7 +215,7 @@ class training():
         print("Numerical Featrures are : ", numerical_features)
         print("Categorical Featrures are : ", categorical_features)
         
-        print("NaN locations:")
+        print("NaN locations (before imputation):")
         for column in data.columns:
             if data[column].isna().any():
                 print(f"\n{column}:")
@@ -213,22 +223,28 @@ class training():
 
         
         X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.15, random_state=42)
-        
+
+        numerical_imputer = SimpleImputer(strategy='mean')
+        X_train[numerical_features] = numerical_imputer.fit_transform(X_train[numerical_features])
+        X_test[numerical_features] = numerical_imputer.transform(X_test[numerical_features])
+
+        categorical_imputer = SimpleImputer(strategy='constant', fill_value='missing')
+        for col in categorical_features:
+            X_train[col] = categorical_imputer.fit_transform(X_train[[col]]).ravel()
+            X_test[col] = categorical_imputer.transform(X_test[[col]]).ravel()
+
+        for col in categorical_features:
+            le = LabelEncoder()
+            X_train[col] = le.fit_transform(X_train[col].astype(str))
+            X_test[col] = le.transform(X_test[col].astype(str))
+
         numerical_transformer = Pipeline(steps=[
-            ('pass',
-             'passthrough')
-        ])
-        categorical_transformer = Pipeline(steps=[
-            ('onehot',
-             OneHotEncoder(handle_unknown='ignore',
-                           sparse_output=False))
+            ('scaler', StandardScaler()) # You might want to scale numerical features
         ])
         
         preprocessor = ColumnTransformer(transformers=[
-            ('num', numerical_transformer, numerical_features),
-            ('cat', categorical_transformer, categorical_features)
-        ]
-            , remainder='passthrough')
+            ('num', numerical_transformer, numerical_features)
+        ], remainder='passthrough')
         
         rf_model = RandomForestRegressor(
             random_state=42,
@@ -247,20 +263,10 @@ class training():
         pipeline.fit(X_train, Y_train)
         print("Training complete!")
 
-        # Corrected line: Use pipeline.predict(X_test)
         Y_pred = pipeline.predict(X_test)
         mae = mean_absolute_error(Y_test, Y_pred)
         print(f"Mean Absolute Error is : {mae:.2f}")
 
-        feature_names = pipeline.named_steps['preprocessor'].get_feature_names_out()
-        result = permutation_importance(
-            pipeline,
-            X_test,
-            Y_test,
-            n_repeats=10,
-            random_state=42,
-            n_jobs=-1
-        )
         joblib.dump(pipeline, "../Final_codes/battery_random_forest_model2.joblib")
 
 
